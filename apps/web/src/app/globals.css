@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* MEDORA CLINICS design tokens (architecture/brand/tokens.css). Light default, dark via data-theme or system. */
+:root {
+  --brand: #12636B; --brand-ink: #0B1B2B; --accent: #E8875B;
+  --surface: #F5F7F6; --card: #FFFFFF; --line: #E2E8E6; --muted: #5B6B73;
+  --success: #2F9E6A; --warning: #C98A12; --danger: #C8413A; --info: #3B6FD8;
+  --brand-soft: #E3F0F0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand: #3FB7B5; --brand-ink: #E7EEF2; --accent: #F2A07A;
+    --surface: #0A141C; --card: #111E28; --line: #22313C; --muted: #93A4AE;
+    --success: #46C08A; --warning: #E3AE3F; --danger: #E26A62; --info: #7CA2F0; --brand-soft: #12303A;
+  }
+}
+[data-theme="dark"] {
+  --brand: #3FB7B5; --brand-ink: #E7EEF2; --accent: #F2A07A;
+  --surface: #0A141C; --card: #111E28; --line: #22313C; --muted: #93A4AE;
+  --success: #46C08A; --warning: #E3AE3F; --danger: #E26A62; --info: #7CA2F0; --brand-soft: #12303A;
+}
+
+@theme inline {
+  --color-brand: var(--brand); --color-ink: var(--brand-ink); --color-accent: var(--accent);
+  --color-surface: var(--surface); --color-card: var(--card); --color-line: var(--line); --color-muted: var(--muted);
+  --color-success: var(--success); --color-warning: var(--warning); --color-danger: var(--danger); --color-info: var(--info);
+  --color-brand-soft: var(--brand-soft);
+  --font-sans: Inter, "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", Inter, "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --radius-card: 12px; --radius-control: 10px;
+}
+
+html, body { background: var(--surface); color: var(--brand-ink); }
+body { font-family: var(--font-sans); font-feature-settings: "tnum" 0; }
+.tabular { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
