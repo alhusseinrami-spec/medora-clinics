@@ -1,4 +1,5 @@
 'use client';
+import { PatientAppAccess } from '@/components/PortalStaff';
 import { use, useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Select, Tabs, fmtDate, fmtTime } from '@/components/ui';
 import { PageTitle } from '@/components/Shell';
@@ -55,6 +56,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
           <Card title={t('doctor')} actions={can('patient.register') && org.organization.kind === 'medical_center' && <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>+ {t('add')}</Button>}>
             <ul className="space-y-1 text-sm">{p.doctors.map((d: any) => <li key={d.membership_id}>{d.full_name} <span className="text-muted">· {d.specialty_code}</span></li>)}</ul>
           </Card>
+          {can('patient.file.read') && <PatientAppAccess patientId={patientId} email={p.email ?? null} />}
         </div>}
         {tab === 'specialty' && <SpecialtyTab patientId={patientId} />}
         {tab === 'consultations' && <Consultations patientId={patientId} />}

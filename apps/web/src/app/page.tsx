@@ -9,7 +9,7 @@ export default function Home() {
   useEffect(() => {
     get('/auth/me', null).then((me) => {
       const w = me.workspaces.find((x: any) => x.status === 'active');
-      router.replace(w ? `/w/${w.organization_id}/dashboard` : '/register');
+      router.replace(w ? `/w/${w.organization_id}/dashboard` : me.patientRecords > 0 ? '/portal' : '/register');
     }).catch(() => router.replace('/login'));
   }, [router]);
   return null;

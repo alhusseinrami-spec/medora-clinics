@@ -2,6 +2,28 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 5: mobile app and patient portal
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 111 of 111 with 10 new, shared package 7 of 7, API end-to-end 47 of 47 with 9 new patient-app tests). Web production build passes. Browser check with synthetic data on an iPhone-sized screen and on desktop: the patient signs in and lands in the patient app, sees their request, switches to Arabic (right-to-left); the receptionist sees the request on the dashboard and books it; the patient then sees it booked. No console errors.
+
+**Built as an installable web app (PWA), not as App Store / Play Store apps.** It installs from the browser to the home screen on Android and iPhone, works full screen and receives push notifications. Native store apps are Planned (they need Apple and Google developer accounts).
+
+| Item | Status |
+|---|---|
+| 009 migration: patient accounts, portal invitations, appointment requests, push subscriptions; the patient side reads only through `portal_*` functions limited to the signed-in patient's own records | Tested (10 new isolation checks) |
+| Inviting a patient from the patient file: a single-use link valid 7 days; sign-up must use the invited email; staff of that workspace cannot join as its patient; access can be removed | Tested (API), Implemented (UI). Email delivery of the link **Awaiting credentials**: staff copy the link and share it (for example on WhatsApp) |
+| Patient app: next visit, appointments (upcoming and past), cancel online until 2 hours before, visit requests with preferred date and time, prescriptions the doctor shared, shared documents (open or download, audited), contact details, clinic message language, WhatsApp consent recorded as the patient's own choice | Tested (API), Implemented (UI) |
+| Staff side: appointment requests on the dashboard; booking creates a confirmed appointment (double booking still refused) and queues the WhatsApp confirmation; declining sends the patient a note | Tested (API), Implemented (UI) |
+| Installable app: manifest, icons (including maskable and Apple touch icon), service worker with an offline notice. API responses and pages are never cached on the device because they hold personal data | Implemented |
+| Web Push: real VAPID-signed, encrypted pushes to the browser push services; texts are generic (never medical details) in the user's language; dead subscriptions removed; one push per notification even with several API instances | Tested against a local push service stand-in. Production needs `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` and `WEB_PUSH_SUBJECT` (without them in production push is off) |
+| Native iOS and Android apps, online payment from the app, chat with the clinic inside the app | **Planned** |
+
+Decisions:
+- One account can be both staff somewhere and a patient elsewhere. Staff land on their workspace (the patient app has a link back); accounts with only patient records land on `/portal`.
+- A patient linked to several clinics sees each clinic's records side by side; nothing is merged between clinics.
+- In development the API derives fixed VAPID keys so push works without setup; production refuses to push until real keys are set.
+- iPhone receives web push only when the app was added to the home screen (Apple's rule); the app says so.
+
 ## 2026-11-25 · Release 4: communication (WhatsApp, reminders, inbox, live notifications)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 101 of 101, shared package 7 of 7, API end-to-end 38 of 38 of which 11 are new messaging tests). Web production build passes. Browser click-through with synthetic data: owner connects a number (refused by Meta, shown as awaiting credentials), automatic messages, outbox; receptionist records consent and sends from the patient file. No console errors.

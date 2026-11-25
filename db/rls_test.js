@@ -261,6 +261,27 @@ const APP = process.env.APP_DATABASE_URL || 'postgres://medora_app:medora_app_de
     `INSERT INTO automation_settings(organization_id,purpose,enabled) VALUES($1,'reminder_24h',true)`, [center.org])));
   await own.end();
 
+  // ---- Release 5: patient portal and push ----
+  const own5 = new Client(OWNER); await own5.connect();
+  await as(drA, center.org, q => q(`INSERT INTO patient_portal_invitations(organization_id,patient_id,email,token_hash,created_by) VALUES($1,$2,'p@test.medora','h-rls-1',$3)`, [center.org, pA, drA]));
+  check('portal invitation token hashes are not readable', await fails(drA, center.org, q => q(`SELECT token_hash FROM patient_portal_invitations`)));
+  check("Dr B cannot see invitations for Dr A's patient", (await count(drB, center.org, `SELECT id FROM patient_portal_invitations`)) === 0);
+  check("Dr B cannot invite Dr A's patient", await fails(drB, center.org, q => q(
+    `INSERT INTO patient_portal_invitations(organization_id,patient_id,email,token_hash,created_by) VALUES($1,$2,'x@test.medora','h-rls-2',$3)`, [center.org, pA, drB])));
+  const patU = await signup('patient@test.medora', 'Synthetic Patient User');
+  await own5.query(`INSERT INTO patient_accounts(user_id,patient_id,organization_id) VALUES($1,$2,$3)`, [patU, pA, center.org]);
+  check('a patient account reads no staff table', (await count(patU, null, `SELECT 1 FROM patients`)) === 0 && (await count(patU, null, `SELECT 1 FROM appointments`)) === 0);
+  check('a patient account cannot act inside the clinic workspace', (await count(patU, center.org, `SELECT 1 FROM patients`)) === 0);
+  check('a patient sees only their own record through the portal', (await count(patU, null, `SELECT * FROM portal_records()`)) === 1 && (await count(drC, null, `SELECT * FROM portal_records()`)) === 0);
+  await as(drA, null, q => q(`INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth) VALUES($1,'https://push.test/a','k','a')`, [drA]));
+  check("push subscriptions are private to their user", (await count(drB, null, `SELECT 1 FROM push_subscriptions`)) === 0);
+  check('a push subscription cannot be added for someone else', await fails(drB, null, q => q(`INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth) VALUES($1,'https://push.test/b','k','a')`, [drA])));
+  await as(patU, null, q => q(`SELECT portal_request_appointment($1,NULL,current_date+1,'any',NULL)`, [pA]));
+  check("Dr B does not see requests for Dr A's patient", (await count(drB, center.org, `SELECT 1 FROM appointment_requests`)) === 0);
+  check('appointment requests cannot be created directly', await fails(drA, center.org, q => q(
+    `INSERT INTO appointment_requests(organization_id,patient_id,preferred_date,preferred_time,requested_by) VALUES($1,$2,current_date,'any',$3)`, [center.org, pA, drA])));
+  await own5.end();
+
   // ---- Secrets and audit ----
   check('app role cannot read password hashes', await fails(drA, null, q => q(`SELECT password_hash FROM users`)));
   check('app role cannot read session token hashes', await fails(drA, null, q => q(`SELECT token_hash FROM sessions`)));

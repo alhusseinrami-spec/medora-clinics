@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { CLINICAL } from './i18n-clinical';
 import { FINANCE } from './i18n-finance';
 import { COMM } from './i18n-comm';
+import { PORTAL } from './i18n-portal';
 
 export type Lang = 'en' | 'ar' | 'fr';
 type Dict = Record<string, string>;
@@ -100,7 +101,7 @@ const ar: Dict = {
   noPermission: 'ليست لديك صلاحية لعرض هذا.', acceptInvitation: 'قبول الدعوة', invitedAs: 'أنت مدعو بصفة',
   resetPassword: 'إعادة تعيين كلمة المرور', newPassword: 'كلمة مرور جديدة', liveConnected: 'مباشر', liveOffline: 'إعادة الاتصال…', freeSlots: 'أوقات متاحة',
 };
-const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar } };
+const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar } };
 
 export const STATUS_LABEL: Record<Lang, Record<string, string>> = {
   en: { scheduled: 'Scheduled', confirmed: 'Confirmed', arrived: 'Arrived', waiting: 'Waiting', in_consultation: 'In consultation', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' },

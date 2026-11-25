@@ -17,10 +17,12 @@ import { SchedulingModule } from './scheduling/scheduling.controller.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { CommModule } from './comm/comm.controller.js';
+import { PortalModule } from './portal/portal.controller.js';
+import { PushService } from './portal/push.js';
 import { attachRealtime } from './realtime/realtime.js';
 
 @Module({
-  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule],
+  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule, PortalModule],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
@@ -41,6 +43,6 @@ export async function createApp(opts: { logger?: boolean } = {}): Promise<{ app:
   (app as any).getHttpAdapter().getInstance().set('trust proxy', 1);
   (app as any).getHttpAdapter().getInstance().get('/health', (_: any, res: any) => res.json({ ok: true }));
   await app.init();
-  const rt = await attachRealtime(app.getHttpServer(), app.get(Db));
+  const rt = await attachRealtime(app.getHttpServer(), app.get(Db), app.get(PushService));
   return { app, close: async () => { await rt.close(); await app.close(); } };
 }

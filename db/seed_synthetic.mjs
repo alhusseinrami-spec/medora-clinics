@@ -114,10 +114,17 @@ await owner.put(`/staff/${mayaM.id}/permissions`, { permissions: [...mayaM.permi
 for (const p of [pk[0], pk[1], pa[0]]) await maya.put(`/patients/${p.id}/consent`, { optedIn: true });
 for (const purpose of ['confirmation', 'reminder_24h', 'reschedule', 'cancellation']) await owner.put(`/whatsapp/automation/${purpose}`, { enabled: true, offsetMinutes: null, followUpDays: null, sendHour: null });
 
+// Patient app (Release 5): one synthetic patient joins through an invitation link and asks for a visit.
+const invite = await maya.post(`/patients/${pa[0].id}/portal/invitations`, { email: 'patient@demo.medora' });
+const patientUser = new C();
+await patientUser.post('/auth/register/patient', { fullName: 'Synthetic Patient', email: 'patient@demo.medora', password: PW, language: 'en', invitation: invite.inviteUrl.split('/').pop() });
+await patientUser.post('/portal/requests', { patientId: pa[0].id, doctorMembershipId: mKarim, preferredDate: at(5, 9).slice(0, 10), preferredTime: 'morning', note: 'Follow-up on blood pressure (synthetic)' });
+
 console.log(`Seeded synthetic demo. Sign in with any of these (password ${PW}):
   owner@demo.medora  center owner
   nour@demo.medora   pediatrician (own practice + center)
   karim@demo.medora  cardiologist
   lina@demo.medora   assistant of Dr Nour
   maya@demo.medora   receptionist
-  sami@demo.medora   insurance desk`);
+  sami@demo.medora   insurance desk
+  patient@demo.medora  patient app (opens /portal)`);
