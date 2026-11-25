@@ -38,4 +38,8 @@ Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@, maya@ or
 | `MFA_ENC_KEY` | 64 hex chars, encrypts TOTP secrets (required in production) |
 | `WEB_ORIGIN`, `WEB_BASE_URL` | CORS origin and links in invitations |
 | `EMAIL_PROVIDER_API_KEY` | Not wired yet: email stays "awaiting credentials" |
+| `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Meta app secret (webhook signatures) and the webhook verify token. Without them the webhook answers 503 |
+| `WHATSAPP_GRAPH_URL` | Defaults to `https://graph.facebook.com/v21.0` (tests point it at a local stand-in) |
+| `WHATSAPP_DEFAULT_COUNTRY_CODE` | For local phone numbers, default `961` |
+| `COMM_WORKER`, `COMM_WORKER_INTERVAL_MS` | Background message sender: `off` to disable; interval, default 30000 |
 | `API_URL` (web) / `NEXT_PUBLIC_WS_URL` | Where the web app reaches the API / WebSocket |

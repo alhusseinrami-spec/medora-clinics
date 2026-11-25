@@ -2,6 +2,34 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 4: communication (WhatsApp, reminders, inbox, live notifications)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 101 of 101, shared package 7 of 7, API end-to-end 38 of 38 of which 11 are new messaging tests). Web production build passes. Browser click-through with synthetic data: owner connects a number (refused by Meta, shown as awaiting credentials), automatic messages, outbox; receptionist records consent and sends from the patient file. No console errors.
+
+**WhatsApp is not connected to Meta in this build.** Everything on our side is built and tested against a local stand-in that answers like the Cloud API (same URLs, bearer token, request and response shapes, webhook signatures). Real sending needs, per clinic, a Meta WhatsApp Business number (phone number ID and a system-user access token) and, for the platform, a Meta app (`WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`) with the webhook pointed at `/api/webhooks/whatsapp`. Until a number passes the connection test it stays "awaiting credentials" and nothing is sent.
+
+| Item | Status |
+|---|---|
+| 008 migration: WhatsApp numbers (per doctor or per workspace), templates, automation settings, consent with history, scheduled-message queue, conversations and messages, all with workspace-pinned row-level security | Tested (17 new isolation checks) |
+| Connecting a number: token stored encrypted (AES-256-GCM), never readable by the API role or returned; "connected" only after Meta accepts the id and token | Tested against the stand-in. **Awaiting credentials** for real Meta numbers |
+| Sending through the Cloud API: approved templates with variables in a fixed order per purpose, free text only inside Meta's 24-hour window | Tested against the stand-in. **Awaiting credentials** |
+| Webhook: URL verification, X-Hub-Signature-256 check, incoming messages, delivery statuses (sent, delivered, read, failed; never backwards), Meta retries ignored | Tested against signed synthetic payloads. **Awaiting credentials** (app secret and verify token) |
+| Automatic messages: confirmation, reminder before the visit (24 h by default), reminder on the day (2 h), rescheduling and cancellation notices, follow-up reminder from the follow-up date in a signed consultation. All off until the workspace switches them on | Tested |
+| Manual messages from the patient file: follow-up, vaccination (with due date), treatment, payment reminder (from an invoice, skipped once paid), and clinic announcements to every consenting patient | Tested (API), Implemented (UI) |
+| Automatic vaccination schedules and treatment reminders computed from prescriptions | **Planned**. Sent by hand from the patient file for now |
+| Patient consent: off by default, recorded by staff with history; a reply of STOP (or ARRET, إلغاء) switches it off and cancels waiting messages | Tested |
+| Every message records why it was not sent (no consent, no number, not connected, visit changed, no approved template, already paid) | Tested |
+| Default texts in English, French and Arabic with no medical details; each workspace can edit them and add its approved Meta template name | Tested (API), Implemented (UI) |
+| Inbox: unanswered, assigned to me, open, closed; conversation view with delivery status, reply, assign, close, link an unknown number to a patient; doctors see only their own number's conversations | Tested (API), Implemented (UI) |
+| Live notifications: new notifications and inbox activity pushed over the WebSocket (ids only; data is fetched again under row-level security); bell and inbox update without reload | Tested (events), Implemented (UI) |
+| Background sender in the API process (every 30 s), safe with several API instances (rows claimed with SKIP LOCKED), retries an interrupted send at most 3 times | Tested (sending), Implemented (recovery after an interrupted send) |
+| SMS and email reminders | **Planned** (email **Awaiting credentials** as before) |
+
+Decisions:
+- Center owners now get the WhatsApp permission by default (they connect the center number). Receptionists and assistants get it when an administrator grants it; the demo seed grants it to the receptionist.
+- Phone numbers without a country code are treated as Lebanese (961), configurable with `WHATSAPP_DEFAULT_COUNTRY_CODE` in the API. The same rule is used to match incoming numbers to patients; an incoming number matching more than one patient stays unlinked.
+- Reminders whose time passed more than an hour ago (for example after downtime) are not sent late.
+
 ## 2026-11-25 · Release 3: finance and insurance
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 84 of 84, shared package 7 of 7, API end-to-end 27 of 27). Web production build passes. Browser click-through with synthetic data: receptionist billing list, invoice, payment and receipt; owner finance dashboard; insurance desk claim from draft to reimbursed; patient file billing and insurance tabs; Arabic layout. No console errors or failed API calls.

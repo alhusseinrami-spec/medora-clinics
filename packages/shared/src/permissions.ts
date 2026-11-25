@@ -27,7 +27,7 @@ export const STAFF_ROLES: Role[] = ['center_owner', 'center_admin', 'doctor', 'a
 export const ORG_WIDE_ROLES: Role[] = ['center_owner', 'center_admin', 'receptionist', 'accountant', 'insurance_admin'];
 
 export const ROLE_DEFAULTS: Record<string, Permission[]> = {
-  center_owner: ['org.manage', 'staff.manage', 'permission.manage', 'finance.view', 'report.view'],
+  center_owner: ['org.manage', 'staff.manage', 'permission.manage', 'finance.view', 'report.view', 'whatsapp.send'],
   center_admin: ['org.manage', 'staff.manage', 'permission.manage', 'patient.register', 'patient.file.read', 'appointment.manage', 'report.view'],
   doctor: ['patient.register', 'patient.file.read', 'patient.history.read', 'clinical_notes.read', 'appointment.manage',
     'prescription.view', 'prescription.create', 'document.upload', 'payment.register', 'finance.view',

@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { PrescriptionEditor, newPrescription } from '@/components/PrescriptionEditor';
 import { DocumentsPanel } from '@/components/DocumentsPanel';
 import { PatientBilling, PatientPolicies, startInvoice } from '@/components/PatientFinance';
+import { PatientMessages } from '@/components/Comm';
 
 export default function PatientFile({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -31,7 +32,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
     { key: 'documents', label: t('documents') },
     ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []),
     ...(can('payment.register') || can('finance.view') ? [{ key: 'billing', label: t('billing') }] : []),
-    ...(can('patient.file.read') ? [{ key: 'insurance', label: t('insurance') }] : []), { key: 'timeline', label: t('timeline') }];
+    ...(can('patient.file.read') ? [{ key: 'insurance', label: t('insurance') }, { key: 'messages', label: 'WhatsApp' }] : []), { key: 'timeline', label: t('timeline') }];
   const age = p.date_of_birth ? Math.floor((Date.now() - Date.parse(p.date_of_birth)) / (365.25 * 86400e3)) : null;
   return (
     <>
@@ -62,6 +63,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
         {tab === 'appointments' && <PatientAppointments patientId={patientId} />}
         {tab === 'billing' && <PatientBilling patientId={patientId} />}
         {tab === 'insurance' && <PatientPolicies patientId={patientId} />}
+        {tab === 'messages' && <PatientMessages patientId={patientId} />}
         {tab === 'timeline' && <Timeline patientId={patientId} />}
       </div>
       <Dialog open={edit} onClose={() => setEdit(false)} title={t('edit')} wide>

@@ -106,6 +106,14 @@ const inv2 = await maya.post('/invoices', { patientId: pk[0].id, doctorMembershi
 await sami.post('/claims', { invoiceId: inv2.id, policyId: policy.id, notes: null });
 await owner.post('/finance/expenses', { category: 'rent', description: 'Synthetic monthly rent', amount: 1200, currency: 'USD', method: 'bank_transfer' });
 
+// Communication (Release 4): consent for some patients and automatic messages switched on in the center.
+// No WhatsApp number is connected in the demo (that needs real Meta credentials), so queued messages show "not sent".
+const staff = await owner.get('/staff');
+const mayaM = staff.find((m) => m.role_code === 'receptionist');
+await owner.put(`/staff/${mayaM.id}/permissions`, { permissions: [...mayaM.permissions, 'whatsapp.send'] });
+for (const p of [pk[0], pk[1], pa[0]]) await maya.put(`/patients/${p.id}/consent`, { optedIn: true });
+for (const purpose of ['confirmation', 'reminder_24h', 'reschedule', 'cancellation']) await owner.put(`/whatsapp/automation/${purpose}`, { enabled: true, offsetMinutes: null, followUpDays: null, sendHour: null });
+
 console.log(`Seeded synthetic demo. Sign in with any of these (password ${PW}):
   owner@demo.medora  center owner
   nour@demo.medora   pediatrician (own practice + center)

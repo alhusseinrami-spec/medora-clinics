@@ -6,6 +6,7 @@ import { Auth, Ctx, RequirePerm, Tenant } from '../common/decorators.js';
 import type { AuthInfo, TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
+import { queueAppointmentEvent } from '../comm/events.js';
 
 const id = (x: string) => parse({ id: v.uuid() }, { id: x }).id;
 const DAY = 86400000;
@@ -166,6 +167,7 @@ export class SchedulingController {
         ids.push(aid);
       }
       await audit(t, c.userId, c.orgId, 'appointment.create', 'appointment', ids[0], { count: ids.length, patient: b.patientId });
+      await queueAppointmentEvent(t, 'confirmation', ids[0]);   // one message for a recurring series: the first visit
       const rows = await t.q(`${APPT_SELECT} WHERE a.id = ANY($1) ORDER BY a.starts_at`, [ids]);
       return ids.length === 1 ? rows[0] : { appointments: rows };
     });
@@ -214,6 +216,7 @@ export class SchedulingController {
       if (!r.length) throw new ForbiddenException('Not allowed to change this appointment');
       await audit(t, c.userId, c.orgId, timeChange ? 'appointment.reschedule' : 'appointment.update', 'appointment', a.id,
         timeChange ? { from: a.starts_at, to: start } : { fields: Object.keys(b) });
+      if (timeChange && Date.parse(start) !== Date.parse(a.starts_at)) await queueAppointmentEvent(t, 'reschedule', a.id);
       return this.getAppt(t, a.id);
     });
   }
@@ -230,6 +233,7 @@ export class SchedulingController {
       }
       await t.q(`UPDATE appointments SET status=$2, cancelled_reason=CASE WHEN $2='cancelled' THEN $3 ELSE cancelled_reason END WHERE id=$1`, [a.id, b.status, b.reason ?? null]);
       await audit(t, c.userId, c.orgId, 'appointment.status', 'appointment', a.id, { from: a.status, to: b.status });
+      if (b.status === 'cancelled') await queueAppointmentEvent(t, 'cancellation', a.id);
       return this.getAppt(t, a.id);
     });
   }

@@ -9,7 +9,7 @@ export interface OrgInfo {
   locations: { id: string; name: string; address: string | null }[]; rooms: { id: string; name: string; location_id: string }[]; departments: { id: string; name: string }[];
   me: { memberships: { id: string; role_code: string; specialty_code: string | null }[]; permissions: string[]; actingDoctors: string[]; orgWide: boolean; doctorMembershipId: string | null };
 }
-export interface LiveEvent { type: string; event?: string; appointment_id?: string; doctor_membership_id?: string }
+export interface LiveEvent { type: string; event?: string; appointment_id?: string; doctor_membership_id?: string; kind?: string; conversation_id?: string }
 
 interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; reload: () => Promise<void>; live: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void }
 const Ctx = createContext<WS>(null as any);
@@ -58,5 +58,5 @@ export const useWorkspace = () => useContext(Ctx);
 /** Re-run a loader whenever the waiting room changes, plus on mount. */
 export function useLiveReload(load: () => void) {
   const { subscribe } = useWorkspace();
-  useEffect(() => { load(); return subscribe((e) => { if (e.type === 'waiting_room') load(); }); }, [load, subscribe]);
+  useEffect(() => { load(); return subscribe((e) => { if (e.type === 'waiting_room' || e.type === 'notification') load(); }); }, [load, subscribe]);
 }

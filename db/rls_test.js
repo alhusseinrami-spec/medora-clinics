@@ -230,6 +230,37 @@ const APP = process.env.APP_DATABASE_URL || 'postgres://medora_app:medora_app_de
   check('doctor got the arrival notification', (await count(drA, null, `SELECT 1 FROM notifications WHERE kind='patient_arrived'`)) === 1);
   check('notifications are private to their user', (await count(asst, center.org, `SELECT 1 FROM notifications`)) === 0);
 
+  // ---- Release 4: communication ----
+  const own = new Client(OWNER); await own.connect();
+  await own.query(`INSERT INTO whatsapp_accounts(organization_id,membership_id,phone_number_id,display_number,access_token_enc,status)
+    VALUES($1,$2,'900000000000001','+961 1 000 000','v1.synthetic','connected')`, [center.org, mA]);
+  check('the app role cannot read WhatsApp access tokens', await fails(drA, center.org, q => q(`SELECT access_token_enc FROM whatsapp_accounts`)));
+  check('Dr A sees their own WhatsApp number', (await count(drA, center.org, `SELECT id FROM whatsapp_accounts`)) === 1);
+  check("Dr B does not see Dr A's number", (await count(drB, center.org, `SELECT id FROM whatsapp_accounts`)) === 0);
+  await own.query(`SELECT comm_inbound('900000000000001','96170000099','Synthetic hello','wamid.rls.1', now())`);
+  check('Dr A sees the conversation on their number', (await count(drA, center.org, `SELECT 1 FROM whatsapp_conversations`)) === 1);
+  check("Dr B cannot see Dr A's conversations", (await count(drB, center.org, `SELECT 1 FROM whatsapp_messages`)) === 0);
+  check('another workspace cannot see them', (await count(drC, solo.org, `SELECT 1 FROM whatsapp_messages`)) === 0);
+  check('an assistant without the WhatsApp permission sees no conversation', (await count(asst, center.org, `SELECT 1 FROM whatsapp_conversations`)) === 0);
+  check('message history cannot be edited', await fails(drA, center.org, q => q(`UPDATE whatsapp_messages SET body='x'`)));
+  check('message history cannot be deleted', await fails(drA, center.org, q => q(`DELETE FROM whatsapp_messages`)));
+  check('an inbound message cannot be forged', await fails(drA, center.org, q => q(
+    `INSERT INTO whatsapp_messages(organization_id,conversation_id,direction,body,status) SELECT organization_id,id,'inbound','forged','received' FROM whatsapp_conversations`)));
+  check('consent history cannot be written directly', await fails(drA, center.org, q => q(
+    `INSERT INTO consent_events(organization_id,patient_id,channel,opted_in,source) VALUES($1,$2,'whatsapp',true,'staff')`, [center.org, pA])));
+  await as(drA, center.org, q => q(`INSERT INTO patient_consents(patient_id,channel,opted_in,recorded_by) VALUES($1,'whatsapp',true,$2)`, [pA, drA]));
+  check('a consent change is logged automatically', (await count(drA, center.org, `SELECT 1 FROM consent_events WHERE patient_id=$1`, [pA])) === 1);
+  check("Dr B cannot read the consent of Dr A's patient", (await count(drB, center.org, `SELECT 1 FROM patient_consents WHERE patient_id=$1`, [pA])) === 0);
+  check('a queued message cannot be attributed to someone else', await fails(drA, center.org, q => q(
+    `INSERT INTO scheduled_messages(organization_id,purpose,patient_id,send_at,created_by) VALUES($1,'announcement',$2,now(),$3)`, [center.org, pA, drB])));
+  check("Dr B cannot queue a message to Dr A's patient", await fails(drB, center.org, q => q(
+    `INSERT INTO scheduled_messages(organization_id,purpose,patient_id,send_at,created_by) VALUES($1,'announcement',$2,now(),$3)`, [center.org, pA, drB])));
+  await as(drA, center.org, q => q(`UPDATE message_templates SET body='changed' WHERE organization_id IS NULL`));
+  check('platform default templates cannot be changed by a workspace', (await own.query(`SELECT 1 FROM message_templates WHERE body='changed'`)).rowCount === 0);
+  check('a center doctor cannot switch on automations', await fails(drA, center.org, q => q(
+    `INSERT INTO automation_settings(organization_id,purpose,enabled) VALUES($1,'reminder_24h',true)`, [center.org])));
+  await own.end();
+
   // ---- Secrets and audit ----
   check('app role cannot read password hashes', await fails(drA, null, q => q(`SELECT password_hash FROM users`)));
   check('app role cannot read session token hashes', await fails(drA, null, q => q(`SELECT token_hash FROM sessions`)));

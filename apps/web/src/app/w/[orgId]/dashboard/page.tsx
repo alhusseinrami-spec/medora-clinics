@@ -77,7 +77,7 @@ export default function Dashboard() {
           <Card title={t('notifications')} actions={notes.some((n) => !n.read_at) && <button className="text-xs text-brand" onClick={readAll}>✓</button>}>
             <div id="notifications" />
             {notes.length === 0 ? <Empty>{t('none')}</Empty> : <ul className="space-y-2 text-sm">{notes.map((n) => (
-              <li key={n.id} className={n.read_at ? 'text-muted' : ''}>{n.kind === 'patient_arrived' ? `● ${t('patientArrived')}` : n.kind} <span className="text-xs text-muted">· {fmtTime(n.created_at, lang)} · {n.organization_name}</span></li>))}</ul>}
+              <li key={n.id} className={n.read_at ? 'text-muted' : ''}>{n.kind === 'patient_arrived' ? `● ${t('patientArrived')}` : n.kind === 'whatsapp_message' ? <a className="hover:underline" href={`/w/${n.payload?.organization_id ?? orgId}/messages?c=${n.payload?.conversation_id ?? ''}`}>✉ {t('whatsappMessage')}</a> : n.kind} <span className="text-xs text-muted">· {fmtTime(n.created_at, lang)} · {n.organization_name}</span></li>))}</ul>}
           </Card>
         </div>
       </div>

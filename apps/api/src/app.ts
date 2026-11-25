@@ -16,10 +16,11 @@ import { PatientsModule } from './patients/patients.controller.js';
 import { SchedulingModule } from './scheduling/scheduling.controller.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
 import { FinanceModule } from './finance/finance.module.js';
+import { CommModule } from './comm/comm.controller.js';
 import { attachRealtime } from './realtime/realtime.js';
 
 @Module({
-  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule],
+  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
@@ -33,6 +34,8 @@ export async function createApp(opts: { logger?: boolean } = {}): Promise<{ app:
   app.use(cookieParser());
   // Document uploads arrive as the raw file body (PDF or image), at most 15 MB.
   app.use(/^\/api\/patients\/[^/]+\/documents$/, express.raw({ type: ['application/pdf', 'image/*'], limit: config.maxUploadBytes }));
+  // Meta's webhook is verified against the exact bytes it sent.
+  app.use('/api/webhooks/whatsapp', express.raw({ type: '*/*', limit: '1mb' }));
   app.enableCors({ origin: config.webOrigin, credentials: true });
   app.setGlobalPrefix('api', { exclude: ['health'] });
   (app as any).getHttpAdapter().getInstance().set('trust proxy', 1);

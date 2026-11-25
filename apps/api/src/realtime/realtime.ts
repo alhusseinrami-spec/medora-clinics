@@ -9,7 +9,8 @@ import { SESSION_COOKIE } from '../common/guards.js';
 interface Sub { ws: WebSocket; userId: string; orgId?: string; orgWide?: boolean; doctors?: Set<string> }
 
 /**
- * Real-time waiting room. PostgreSQL triggers NOTIFY on every appointment status change; this listener forwards
+ * Real-time events: waiting room, personal notifications and WhatsApp inbox activity.
+ * Waiting room: PostgreSQL triggers NOTIFY on every appointment status change; this listener forwards
  * the event (ids only, no patient data) to sockets whose user may see that doctor's queue. Clients then refetch over REST.
  * Protocol: connect to /ws with the session cookie (or ?token=), then send {"type":"subscribe","orgId":"..."}.
  */
@@ -19,8 +20,19 @@ export async function attachRealtime(server: Server, db: Db) {
   const listener = new pg.Client({ connectionString: config.databaseUrl });
   await listener.connect();
   await listener.query('LISTEN waiting_room');
+  await listener.query('LISTEN comm_events');
   listener.on('notification', (n) => {
     let ev: any; try { ev = JSON.parse(n.payload ?? '{}'); } catch { return; }
+    if (n.channel === 'comm_events') {
+      // A new notification goes to that user's sockets; WhatsApp activity tells the workspace's sockets to refetch the inbox
+      // (ids only: what each person may read is decided again by the REST call under row-level security).
+      for (const s of subs) {
+        if (s.ws.readyState !== WebSocket.OPEN) continue;
+        if (ev.type === 'notification' && s.userId === ev.user_id) s.ws.send(JSON.stringify({ type: 'notification', kind: ev.kind }));
+        if (ev.type === 'whatsapp' && s.orgId === ev.organization_id) s.ws.send(JSON.stringify({ type: 'whatsapp', conversation_id: ev.conversation_id }));
+      }
+      return;
+    }
     for (const s of subs) {
       if (s.orgId !== ev.organization_id) continue;
       if (!s.orgWide && !s.doctors?.has(ev.doctor_membership_id)) continue;

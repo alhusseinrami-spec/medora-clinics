@@ -15,7 +15,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [menu, setMenu] = useState(false);
   useEffect(() => {
     const load = () => get<any[]>('/notifications?unread=1', null).then((n) => setUnread(n.length)).catch(() => {});
-    load(); return subscribe((e) => { if (e.event === 'arrived') load(); });
+    load(); return subscribe((e) => { if (e.event === 'arrived' || e.type === 'notification') load(); });
   }, [subscribe]);
   useEffect(() => { if (me.user.interface_language && me.user.interface_language !== lang && !localStorage.getItem('medora.lang')) setLang(me.user.interface_language as Lang); }, [me, lang, setLang]);
 
@@ -25,6 +25,7 @@ export function Shell({ children }: { children: ReactNode }) {
     { href: `${base}/calendar`, label: t('calendar'), icon: '▦', show: can('appointment.manage') },
     { href: `${base}/waiting-room`, label: t('waitingRoom'), icon: '◷', show: can('appointment.manage') },
     { href: `${base}/patients`, label: t('patients'), icon: '◉', show: can('patient.file.read') },
+    { href: `${base}/messages`, label: t('messages'), icon: '✉', show: can('whatsapp.send') },
     { href: `${base}/billing`, label: t('billing'), icon: '▤', show: can('payment.register') || can('finance.view') },
     { href: `${base}/finance`, label: t('finance'), icon: '◔', show: can('finance.view') },
     { href: `${base}/insurance`, label: t('insurance'), icon: '⛨', show: can('insurance.manage') },
@@ -33,6 +34,7 @@ export function Shell({ children }: { children: ReactNode }) {
     { href: `${base}/settings/team`, label: t('team'), show: true },
     { href: `${base}/settings/workspace`, label: t('workspace'), show: can('org.manage') },
     { href: `${base}/settings/availability`, label: t('availability'), show: can('appointment.manage') && org.me.actingDoctors.length > 0 },
+    { href: `${base}/settings/whatsapp`, label: 'WhatsApp', show: can('whatsapp.send') },
     { href: `${base}/settings/specialty`, label: t('specialty'), show: can('template.manage') && !!org.me.doctorMembershipId },
     { href: `${base}/settings/profile`, label: t('profile'), show: true },
   ];
