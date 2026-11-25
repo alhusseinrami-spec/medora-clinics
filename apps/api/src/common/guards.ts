@@ -1,9 +1,10 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, HttpException, Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Permission } from '@medora/shared';
 import { Db } from '../db/db.service.js';
 import { sha256 } from './crypto.js';
-import { ALLOW_MFA_PENDING, PERMS, PUBLIC, TENANT } from './decorators.js';
+import { ALLOW_MFA_PENDING, BILLING_EXEMPT, FEATURE, PERMS, PLATFORM_ADMIN, PUBLIC, TENANT } from './decorators.js';
+import { config } from '../config.js';
 import type { AppRequest, TenantInfo } from './types.js';
 
 export const SESSION_COOKIE = 'medora_session';
@@ -44,7 +45,8 @@ export class TenantGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext) {
     const targets = [ctx.getHandler(), ctx.getClass()];
     const perms = this.reflector.getAllAndOverride<Permission[] | { any: Permission[] }>(PERMS, targets);
-    const needsTenant = perms !== undefined || this.reflector.getAllAndOverride<boolean>(TENANT, targets);
+    const feature = this.reflector.getAllAndOverride<string>(FEATURE, targets);
+    const needsTenant = perms !== undefined || feature !== undefined || this.reflector.getAllAndOverride<boolean>(TENANT, targets);
     if (!needsTenant) return true;
     const req = ctx.switchToHttp().getRequest<AppRequest>();
     if (!req.auth) throw new UnauthorizedException();
@@ -58,22 +60,47 @@ export class TenantGuard implements CanActivate {
       const permRows = await t.q(`SELECT DISTINCT permission_code FROM membership_permissions WHERE membership_id = ANY($1)`, [memberships.map((m) => m.id)]);
       const acting = await t.q(`SELECT app_acting_doctors() AS id`);
       const wide = await t.one(`SELECT app_is_org_wide() AS w`);
+      const sub = await t.one(`SELECT plan_code, status, effective_status, usable, features FROM org_subscription($1)`, [orgId]);
       const info: TenantInfo = {
         userId: req.auth!.userId, orgId, orgKind: memberships[0].kind,
         memberships: memberships.map(({ kind, ...m }) => m),
         permissions: new Set(permRows.map((r) => r.permission_code)),
         actingDoctors: acting.map((r) => r.id), orgWide: wide.w,
         doctorMembershipId: memberships.find((m) => m.role_code === 'doctor')?.id ?? null,
+        plan: sub ? { code: sub.plan_code, status: sub.status, effectiveStatus: sub.effective_status, usable: sub.usable, features: sub.features ?? {} }
+          : { code: 'none', status: 'none', effectiveStatus: 'none', usable: false, features: {} },
       };
       return info;
     });
     if (!tenant) throw new ForbiddenException('You are not an active member of this workspace');
     req.tenant = tenant;
+    if (feature && tenant.plan.features[feature] !== true) {
+      throw new ForbiddenException({ message: 'Your plan does not include this feature. Upgrade the plan in Settings, Subscription.', feature, code: 'plan_feature' });
+    }
+    // An expired trial or unpaid subscription keeps everything readable but stops changes, except billing and support.
+    if (!tenant.plan.usable && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !this.reflector.getAllAndOverride<boolean>(BILLING_EXEMPT, targets)) {
+      throw new HttpException({ message: 'The subscription of this workspace is not active. Records stay readable; renew the plan to make changes.', code: 'subscription_inactive', status: tenant.plan.effectiveStatus }, 402);
+    }
     if (perms) {
       const list = Array.isArray(perms) ? perms : perms.any;
       const ok = Array.isArray(perms) ? list.every((p) => tenant.permissions.has(p)) : list.some((p) => tenant.permissions.has(p));
       if (!ok) throw new ForbiddenException({ message: 'You do not have permission for this action', required: list });
     }
+    return true;
+  }
+}
+
+/** Super-admin console: the user must be a platform administrator (and, in production, use two-factor sign-in). */
+@Injectable()
+export class PlatformAdminGuard implements CanActivate {
+  constructor(private reflector: Reflector, private db: Db) {}
+  async canActivate(ctx: ExecutionContext) {
+    if (!this.reflector.getAllAndOverride<boolean>(PLATFORM_ADMIN, [ctx.getHandler(), ctx.getClass()])) return true;
+    const req = ctx.switchToHttp().getRequest<AppRequest>();
+    if (!req.auth) throw new UnauthorizedException();
+    const u = await this.db.tx({ userId: req.auth.userId }, (t) => t.one(`SELECT is_platform_admin, mfa_enabled FROM users WHERE id = $1`, [req.auth!.userId]));
+    if (!u?.is_platform_admin) throw new ForbiddenException('Platform administrators only');
+    if (config.requireAdminMfa && !u.mfa_enabled) throw new ForbiddenException({ message: 'Turn on two-factor sign-in before using the admin console', code: 'admin_mfa_required' });
     return true;
   }
 }

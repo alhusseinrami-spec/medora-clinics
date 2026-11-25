@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Module, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { customize, type Customization } from '@medora/shared';
 import { Db } from '../db/db.service.js';
-import { Ctx, Public, RequirePerm, Tenant } from '../common/decorators.js';
+import { Ctx, Public, RequirePerm, Tenant, RequireFeature } from '../common/decorators.js';
 import type { TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -47,7 +47,7 @@ export class SpecialtyController {
    * Doctor customization: add custom fields, hide optional ones, relabel. Produces a NEW published version of the
    * doctor's own template; records saved under older versions keep pointing at them and are never altered.
    */
-  @RequirePerm('template.manage') @Post('specialty/customize')
+  @RequireFeature('specialty_templates') @RequirePerm('template.manage') @Post('specialty/customize')
   customizeTemplate(@Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ customization: v.any() }, body);
     if (!c.doctorMembershipId) throw new ForbiddenException('Only a doctor can customize their specialty templates');

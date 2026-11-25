@@ -16,7 +16,7 @@ export default function Login() {
     if (next?.startsWith('/')) return router.replace(next);
     const me = await get('/auth/me', null);
     const w = me.workspaces.find((x: any) => x.status === 'active');
-    router.replace(w ? `/w/${w.organization_id}/dashboard` : me.patientRecords > 0 ? '/portal' : '/register');
+    router.replace(w ? `/w/${w.organization_id}/dashboard` : me.user.is_platform_admin ? '/admin' : me.patientRecords > 0 ? '/portal' : '/register');
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);

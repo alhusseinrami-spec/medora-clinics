@@ -2,6 +2,33 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 6: commercial platform (plans, subscriptions, super admin)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126 with 15 new, shared package 7 of 7, API end-to-end 56 of 56 with 9 new commercial tests). Web production build passes. Browser check with synthetic data: the MEDORA admin goes through overview, workspaces, a workspace's subscription, plans, support (answers a request) and settings. The center owner sees the subscription page and the answer to their request. Dr Nour's practice on the Solo plan has no Finance, Insurance or WhatsApp menus, and the subscription page shows in Arabic. No console errors.
+
+**No online card payments.** Taking card payments needs a payment provider account (for example Stripe or a Lebanese acquirer), so it is **Awaiting credentials**. Until then MEDORA records payments it receives (bank transfer, cash, OMT, Whish, cheque) in the admin console, and each payment renews the subscription for the months it covers.
+
+| Item | Status |
+|---|---|
+| 010 migration: plans with prices, limits and features stored as data; one subscription per workspace with an event history; subscription payments; support requests; platform settings | Tested (15 new isolation checks) |
+| Free trial for every new workspace (14 days by default, plan by workspace kind, both configurable) | Tested |
+| Plan features enforced by the API: finance (expenses, commissions, overview), insurance, WhatsApp, patient app invitations, departments, specialty customization. Invoices, payments and exchange rates stay in every plan. The web app hides menus and tabs the plan does not include | Tested (API), Implemented (UI) |
+| Plan limits (doctors, other staff, locations, patients) enforced by database triggers, whatever the caller | Tested |
+| Inactive subscription (trial ended, expired after the grace days, cancelled, suspended): records stay readable, every change is refused with 402, except the subscription and support pages. A banner tells everyone why | Tested (API), Implemented (UI) |
+| Workspace subscription page: plan, status, trial days left, usage against limits, plan comparison, monthly or yearly billing, upgrade, downgrade (refused when usage does not fit), cancel at period end (a trial ends at once), resume, payments and history | Tested (API), Implemented (UI) |
+| Super-admin console (`/admin`): overview (workspaces, monthly recurring revenue, trials ending, active users, payments, usage, sign-ups per month), workspaces with filters, workspace detail (edit plan, status, trial end, paid-until, negotiated price; record and refund payments; suspend and reactivate), users (search, suspend, reactivate; sessions end at once), plans editor, support inbox, platform settings (trial length, grace days, trial plans, open or close sign-ups) | Tested (API), Implemented (UI). English only (internal tool) |
+| The super admin never sees patient or clinical records: the console reads only through functions that return workspace metadata and counts | Tested |
+| Platform admins are made only from the server (`node db/platform_admin.js grant|revoke|create`), never through the API. In production they must use two-factor sign-in (`ADMIN_REQUIRE_MFA=true` turns this on in development too) | Tested (grant), Implemented (MFA rule) |
+| Support requests between users and MEDORA, private to the requester | Tested |
+| Online card payments, automatic invoices for subscriptions, emailed receipts and trial reminders | Payments and email **Awaiting credentials**; invoices for subscriptions **Planned** |
+| Enterprise: several branches (no location limit), dedicated configuration (negotiated price, custom plans) | Implemented. Custom integrations (API keys, webhooks for clients) **Planned** |
+| Editing specialty presets from the console | **Planned** (presets stay versioned in the repository and are published with `npm run db:presets`) |
+
+Decisions:
+- New practices start on Professional and centers on Medical Center during the trial so they can try everything; they choose a plan afterwards.
+- A workspace whose trial or subscription lapses is never locked out of its records: medical records must stay readable. Only changes stop.
+- Raising the price of a plan applies from the next payment; a negotiated price per workspace overrides the plan price.
+
 ## 2026-11-25 · Release 5: mobile app and patient portal
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 111 of 111 with 10 new, shared package 7 of 7, API end-to-end 47 of 47 with 9 new patient-app tests). Web production build passes. Browser check with synthetic data on an iPhone-sized screen and on desktop: the patient signs in and lands in the patient app, sees their request, switches to Arabic (right-to-left); the receptionist sees the request on the dashboard and books it; the patient then sees it booked. No console errors.

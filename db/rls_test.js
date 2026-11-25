@@ -282,6 +282,24 @@ const APP = process.env.APP_DATABASE_URL || 'postgres://medora_app:medora_app_de
     `INSERT INTO appointment_requests(organization_id,patient_id,preferred_date,preferred_time,requested_by) VALUES($1,$2,current_date,'any',$3)`, [center.org, pA, drA])));
   await own5.end();
 
+  // ---- Release 6: subscriptions, admin functions, support ----
+  const own6 = new Client(OWNER); await own6.connect();
+  check('every workspace has a trial subscription', (await own6.query(`SELECT count(*)::int n FROM organizations o WHERE NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.organization_id=o.id)`)).rows[0].n === 0);
+  check('a workspace cannot change its own subscription row', await fails(drA, center.org, q => q(`UPDATE subscriptions SET status='active', current_period_end=now()+interval '10 years' WHERE organization_id=$1`, [center.org])));
+  check('a workspace cannot record its own payment', await fails(drA, center.org, q => q(
+    `INSERT INTO subscription_payments(organization_id,amount,currency,method,period_start,period_end,plan_code,recorded_by) VALUES($1,1,'USD','cash',current_date,current_date+30,'solo',$2)`, [center.org, drA])));
+  check('plans cannot be edited by the app role', await fails(drA, null, q => q(`UPDATE plans SET monthly_price=0`)));
+  check('Dr C cannot read the center subscription', (await count(drC, solo.org, `SELECT 1 FROM subscriptions WHERE organization_id=$1`, [center.org])) === 0);
+  for (const fn of [`admin_overview()`, `admin_workspaces()`, `admin_users(NULL)`, `admin_set_org_status('${center.org}','suspended','x')`, `admin_record_payment('${center.org}',1,'USD','cash',NULL,1)`, `admin_set_setting('trial_days','365')`]) {
+    check(`non-admin cannot call ${fn.split('(')[0]}`, await fails(drA, center.org, q => q(`SELECT ${fn}`)));
+  }
+  check('platform settings cannot be written directly', await fails(drA, null, q => q(`UPDATE platform_settings SET value='0' WHERE key='trial_days'`)));
+  const sr = (await as(drA, null, q => q(`INSERT INTO support_requests(user_id,category,subject) VALUES($1,'other','Synthetic question') RETURNING id`, [drA]))).rows[0].id;
+  check('support requests are private to their author', (await count(drB, null, `SELECT 1 FROM support_requests WHERE id=$1`, [sr])) === 0);
+  check('a user cannot answer as MEDORA staff', await fails(drA, null, q => q(`INSERT INTO support_messages(request_id,author_id,from_staff,body) VALUES($1,$2,true,'fake')`, [sr, drA])));
+  check("a user cannot open a request for someone else's workspace", await fails(drC, solo.org, q => q(`INSERT INTO support_requests(organization_id,user_id,category,subject) VALUES($1,$2,'other','x y z')`, [center.org, drC])));
+  await own6.end();
+
   // ---- Secrets and audit ----
   check('app role cannot read password hashes', await fails(drA, null, q => q(`SELECT password_hash FROM users`)));
   check('app role cannot read session token hashes', await fails(drA, null, q => q(`SELECT token_hash FROM sessions`)));

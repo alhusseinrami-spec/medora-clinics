@@ -25,7 +25,7 @@ npm run build -w @medora/api && npm start -w @medora/api &
 npm run db:seed                              # synthetic demo accounts, password Demo-Medora-2026
 npm run build -w @medora/web && npm start -w @medora/web
 ```
-Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@, maya@, sami@demo.medora, or patient@demo.medora for the patient app (`/portal`, try it on a phone-sized window).
+Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@, maya@, sami@demo.medora, patient@demo.medora for the patient app (`/portal`, try it on a phone-sized window), or admin@demo.medora for the MEDORA admin console (`/admin`). Platform admins are made from the server: `node db/platform_admin.js grant <email>`.
 
 `npm test` runs every suite. It resets the dev database, so stop the API first and re-seed afterwards.
 
@@ -43,4 +43,5 @@ Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@, maya@, s
 | `WHATSAPP_DEFAULT_COUNTRY_CODE` | For local phone numbers, default `961` |
 | `COMM_WORKER`, `COMM_WORKER_INTERVAL_MS` | Background message sender: `off` to disable; interval, default 30000 |
 | `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` | VAPID keys and contact (`mailto:`) for push notifications. Required in production; development uses fixed derived keys |
+| `ADMIN_REQUIRE_MFA` | `true` requires two-factor sign-in for MEDORA platform admins in development (always required in production) |
 | `API_URL` (web) / `NEXT_PUBLIC_WS_URL` | Where the web app reaches the API / WebSocket |

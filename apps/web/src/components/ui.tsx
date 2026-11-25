@@ -73,6 +73,8 @@ const STATUS_TONE: Record<string, string> = {
   scheduled: 'bg-line text-ink', confirmed: 'bg-info/15 text-info', arrived: 'bg-accent/20 text-accent', waiting: 'bg-warning/15 text-warning',
   in_consultation: 'bg-brand/15 text-brand', completed: 'bg-success/15 text-success', cancelled: 'bg-danger/15 text-danger', no_show: 'bg-danger/15 text-danger',
   draft: 'bg-warning/15 text-warning', signed: 'bg-success/15 text-success', issued: 'bg-info/15 text-info', void: 'bg-line text-muted', paid: 'bg-success/15 text-success', unpaid: 'bg-warning/15 text-warning',
+  trial: 'bg-info/15 text-info', active: 'bg-success/15 text-success', past_due: 'bg-warning/15 text-warning', trial_expired: 'bg-danger/15 text-danger', expired: 'bg-danger/15 text-danger', suspended: 'bg-danger/15 text-danger',
+  open: 'bg-warning/15 text-warning', answered: 'bg-info/15 text-info', closed: 'bg-line text-muted', refunded: 'bg-line text-muted',
   submitted: 'bg-info/15 text-info', approved: 'bg-success/15 text-success', partially_approved: 'bg-warning/15 text-warning', rejected: 'bg-danger/15 text-danger', reimbursed: 'bg-success/15 text-success',
 };
 export function Badge({ children, status, className }: { children: ReactNode; status?: string; className?: string }) {

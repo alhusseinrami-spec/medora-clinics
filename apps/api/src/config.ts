@@ -34,6 +34,8 @@ export const config = {
   cookieSecure: isProd || env.COOKIE_SECURE === 'true',
   mfaKey: mfaKey(),
   emailProviderConfigured: Boolean(env.EMAIL_PROVIDER_API_KEY),
+  /** Platform administrators must use two-factor sign-in (always in production). */
+  requireAdminMfa: isProd || env.ADMIN_REQUIRE_MFA === 'true',
   fileKey: fileKey(),
   /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
   storageDir: env.STORAGE_DIR ?? new URL('../../storage/', import.meta.url).pathname,
