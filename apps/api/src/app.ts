@@ -21,6 +21,7 @@ import { PortalModule } from './portal/portal.controller.js';
 import { CommercialModule } from './commercial/commercial.controller.js';
 import { PushService } from './portal/push.js';
 import { attachRealtime } from './realtime/realtime.js';
+import { rateLimit, securityHeaders } from './common/security.js';
 
 @Module({
   imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule, PortalModule, CommercialModule],
@@ -35,6 +36,9 @@ class AppModule {}
 
 export async function createApp(opts: { logger?: boolean } = {}): Promise<{ app: INestApplication; close: () => Promise<void> }> {
   const app = await NestFactory.create(AppModule, { logger: opts.logger === false ? false : ['error', 'warn', 'log'] });
+  (app as any).getHttpAdapter().getInstance().disable('x-powered-by');
+  app.use(securityHeaders);
+  app.use(rateLimit(app.get(Db)));
   app.use(cookieParser());
   // Document uploads arrive as the raw file body (PDF or image), at most 15 MB.
   app.use(/^\/api\/patients\/[^/]+\/documents$/, express.raw({ type: ['application/pdf', 'image/*'], limit: config.maxUploadBytes }));

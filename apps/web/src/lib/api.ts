@@ -50,6 +50,8 @@ export async function openFile(path: string, filename?: string) {
 export function wsUrl() {
   const explicit = process.env.NEXT_PUBLIC_WS_URL;
   if (explicit) return explicit;
-  const { protocol, hostname } = window.location;
-  return `${protocol === 'https:' ? 'wss' : 'ws'}://${hostname}:4000/ws`;
+  const { protocol, hostname, host, port } = window.location;
+  const ws = protocol === 'https:' ? 'wss' : 'ws';
+  // Development: the web app is on :3000 and the API on :4000. Behind the reverse proxy (deploy/), /ws is on the same origin.
+  return port === '3000' ? `${ws}://${hostname}:4000/ws` : `${ws}://${host}/ws`;
 }

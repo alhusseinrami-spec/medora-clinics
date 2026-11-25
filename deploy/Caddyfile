@@ -1,0 +1,15 @@
+# Reverse proxy with automatic HTTPS (Let's Encrypt) for {$DOMAIN}.
+# /api and /ws go straight to the API; everything else is the web app.
+{$DOMAIN} {
+	encode zstd gzip
+	@api path /api/* /ws /health
+	reverse_proxy @api api:4000
+	reverse_proxy web:3000
+	request_body {
+		max_size 20MB
+	}
+	log {
+		output stdout
+		format json
+	}
+}

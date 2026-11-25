@@ -36,6 +36,8 @@ export const config = {
   emailProviderConfigured: Boolean(env.EMAIL_PROVIDER_API_KEY),
   /** Platform administrators must use two-factor sign-in (always in production). */
   requireAdminMfa: isProd || env.ADMIN_REQUIRE_MFA === 'true',
+  /** Tests that sign up many accounts from one address switch the per-IP limits off. Never in production. */
+  rateLimitOff: !isProd && env.RATE_LIMIT === 'off',
   fileKey: fileKey(),
   /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
   storageDir: env.STORAGE_DIR ?? new URL('../../storage/', import.meta.url).pathname,
