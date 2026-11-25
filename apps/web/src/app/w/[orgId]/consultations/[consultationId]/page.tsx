@@ -11,6 +11,7 @@ import { del, get, patch, post, put } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { label as L, type TemplateSchema } from '@medora/shared';
 import { useWorkspace } from '@/lib/workspace';
+import { startInvoice } from '@/components/Invoice';
 
 const VITALS: [string, string, string, number][] = [
   ['bp_systolic', 'bp', 'mmHg', 1], ['bp_diastolic', 'bp', 'mmHg', 1], ['pulse', 'pulse', 'bpm', 1], ['temperature_c', 'temperature', '°C', 0.1],
@@ -23,7 +24,7 @@ const TEXTS: [string, string, string][] = [
 
 export default function ConsultationPage({ params }: { params: Promise<{ orgId: string; consultationId: string }> }) {
   const { orgId, consultationId } = use(params);
-  const { t, lang } = useI18n(); const { org } = useWorkspace(); const router = useRouter();
+  const { t, lang } = useI18n(); const { org, can } = useWorkspace(); const router = useRouter();
   const [c, setC] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const [rxs, setRxs] = useState<any[]>([]);
   const load = useCallback(async () => {
@@ -42,7 +43,8 @@ export default function ConsultationPage({ params }: { params: Promise<{ orgId: 
   return <>
     <PageTitle title={<>{t('consultation')} · <Link className="hover:underline" href={`/w/${orgId}/patients/${c.patient_id}`}>{c.patient_name}</Link></>}
       sub={<span className="tabular">{c.patient_number}{age !== null ? ` · ${age} y` : ''} · {fmtDate(c.created_at, lang)} {fmtTime(c.created_at, lang)} · {c.doctor_name}</span>}
-      actions={<Badge status={c.status}>{t(c.status)}</Badge>} />
+      actions={<>{c.status === 'signed' && c.appointment_id && can('payment.register') && <Button size="sm" variant="secondary" onClick={() => startInvoice(org.organization.id, { appointmentId: c.appointment_id }).catch(setErr)}>{t('createInvoice')}</Button>}
+        <Badge status={c.status}>{t(c.status)}</Badge></>} />
     {c.allergies && <p className="mb-4 rounded-[10px] bg-danger/10 p-3 text-sm font-medium text-danger">{t('allergyWarning')}: {c.allergies}</p>}
     {c.status === 'signed' && <p className="mb-4 rounded-[10px] bg-success/10 p-3 text-sm text-success">{t('signedBy')} {c.signed_by_name} · {fmtDate(c.signed_at, lang)} {fmtTime(c.signed_at, lang)}</p>}
 

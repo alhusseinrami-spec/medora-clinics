@@ -60,7 +60,7 @@ export function InvoiceView({ inv, onChange }: { inv: any; onChange: (i: any) =>
         <Link className="text-brand hover:underline" href={`/w/${orgId}/billing/${c.id}`}>CN-{String(c.invoice_number).padStart(6, '0')}</Link> · {m(c.total)} · {c.notes}</li>)}</ul></Card>}
       {inv.claims?.length > 0 && <Card title={t('claims')}><ul className="space-y-1 text-sm">{inv.claims.map((c: any) => <li key={c.id} className="flex items-center justify-between gap-2">
         <span>{c.provider_name} · {m(c.amount_approved ?? c.amount_claimed)}</span><Badge status={c.status}>{t(c.status)}</Badge></li>)}</ul></Card>}
-      {inv.status === 'issued' && inv.kind === 'invoice' && <Card>
+      {inv.status === 'issued' && inv.kind === 'invoice' && (can('insurance.manage') || (can('finance.view') && can('payment.register'))) && <Card>
         <div className="flex flex-wrap gap-2">
           {can('insurance.manage') && <ClaimButton inv={inv} onDone={onChange} />}
           {can('finance.view') && can('payment.register') && <Button size="sm" variant="secondary" onClick={() => setDialog('credit')}>{t('issueCreditNote')}</Button>}
@@ -86,7 +86,7 @@ function Totals({ inv }: { inv: any }) {
   rows.push([t('total'), inv.total, 'font-semibold']);
   if (inv.kind === 'invoice' && inv.status === 'issued') {
     if (Number(inv.credited)) rows.push([t('credited'), -inv.credited]);
-    rows.push([t('paid'), -inv.paid]);
+    rows.push([t('paid'), Number(inv.paid) ? -inv.paid : 0]);
     rows.push([t('balance'), inv.balance, 'font-semibold text-brand']);
   }
   return <dl className="ms-auto mt-3 w-full max-w-xs space-y-1 text-sm">{rows.map(([k, v, cls]) => <div key={k} className={cx('flex justify-between tabular', cls)}><dt>{k}</dt><dd>{m(v)}</dd></div>)}</dl>;

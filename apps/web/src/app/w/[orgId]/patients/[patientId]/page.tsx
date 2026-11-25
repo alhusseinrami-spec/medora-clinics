@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PrescriptionEditor, newPrescription } from '@/components/PrescriptionEditor';
 import { DocumentsPanel } from '@/components/DocumentsPanel';
+import { PatientBilling, PatientPolicies, startInvoice } from '@/components/PatientFinance';
 
 export default function PatientFile({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -28,7 +29,9 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
     ...(can('clinical_notes.read') ? [{ key: 'consultations', label: t('consultations') }] : []),
     ...(can('prescription.view') ? [{ key: 'prescriptions', label: t('prescriptions') }] : []),
     { key: 'documents', label: t('documents') },
-    ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []), { key: 'timeline', label: t('timeline') }];
+    ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []),
+    ...(can('payment.register') || can('finance.view') ? [{ key: 'billing', label: t('billing') }] : []),
+    ...(can('patient.file.read') ? [{ key: 'insurance', label: t('insurance') }] : []), { key: 'timeline', label: t('timeline') }];
   const age = p.date_of_birth ? Math.floor((Date.now() - Date.parse(p.date_of_birth)) / (365.25 * 86400e3)) : null;
   return (
     <>
@@ -57,6 +60,8 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
         {tab === 'prescriptions' && <Prescriptions patientId={patientId} />}
         {tab === 'documents' && <DocumentsPanel patientId={patientId} />}
         {tab === 'appointments' && <PatientAppointments patientId={patientId} />}
+        {tab === 'billing' && <PatientBilling patientId={patientId} />}
+        {tab === 'insurance' && <PatientPolicies patientId={patientId} />}
         {tab === 'timeline' && <Timeline patientId={patientId} />}
       </div>
       <Dialog open={edit} onClose={() => setEdit(false)} title={t('edit')} wide>
@@ -84,14 +89,16 @@ function SpecialtyTab({ patientId }: { patientId: string }) {
 }
 
 function PatientAppointments({ patientId }: { patientId: string }) {
-  const { t, lang, status } = useI18n();
+  const { t, lang, status } = useI18n(); const { can, orgId } = useWorkspace(); const [err, setErr] = useState<unknown>(null);
   const from = new Date(Date.now() - 60 * 86400e3).toISOString(); const to = new Date(Date.now() + 60 * 86400e3).toISOString();
   const { data, reload } = useLoad<any[]>(`/appointments?from=${from}&to=${to}&patient=${patientId}`);
   if (!data) return <p className="text-muted">{t('loading')}</p>;
   if (!data.length) return <Empty>{t('noAppointments')}</Empty>;
   return <Card><ul className="divide-y divide-line">{data.map((a) => <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
     <div><p className="font-medium tabular">{fmtDate(a.starts_at, lang)} · {fmtTime(a.starts_at, lang)}</p><p className="text-xs text-muted">{a.doctor_name} {a.service_name ? `· ${a.service_name}` : ''}</p></div>
-    <div className="flex items-center gap-2"><Badge status={a.status}>{status(a.status)}</Badge><ApptActions appt={a} onDone={reload} compact /></div></li>)}</ul></Card>;
+    <div className="flex items-center gap-2"><Badge status={a.status}>{status(a.status)}</Badge><ApptActions appt={a} onDone={reload} compact />
+      {a.status === 'completed' && can('payment.register') && <Button size="sm" variant="secondary" onClick={() => startInvoice(orgId, { appointmentId: a.id }).catch(setErr)}>{t('createInvoice')}</Button>}</div></li>)}</ul>
+    <ErrorNote error={err} /></Card>;
 }
 
 function Timeline({ patientId }: { patientId: string }) {

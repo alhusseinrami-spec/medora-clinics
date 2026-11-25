@@ -2,6 +2,32 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 3: finance and insurance
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 84 of 84, shared package 7 of 7, API end-to-end 27 of 27). Web production build passes. Browser click-through with synthetic data: receptionist billing list, invoice, payment and receipt; owner finance dashboard; insurance desk claim from draft to reimbursed; patient file billing and insurance tabs; Arabic layout. No console errors or failed API calls.
+
+| Item | Status |
+|---|---|
+| 007 migration: invoices, items, payments, credit notes, exchange rates, expenses, commissions, insurers, policies, claims, with workspace-pinned row-level security | Tested (29 new isolation checks) |
+| Invoices: draft, edit, issue (gap-free number at issue), void only when unpaid, from an appointment (fills the service or consultation fee, one invoice per visit) or from the patient file | Tested (API), Implemented (UI) |
+| Issued invoices and payments cannot be changed or deleted (database triggers); corrections by credit note (CN- numbers) and refunds (negative payments linked to the original) | Tested |
+| Payments in USD or LBP by cash, card, bank transfer, Whish or OMT, converted at the rate saved on the invoice; overpayment refused; each payment gets a receipt number | Tested. No payment gateway is connected: card, Whish and OMT are recorded by hand, not charged online |
+| Exchange rate history per workspace, never rewritten; each invoice and payment keeps the rate it used | Tested |
+| Printable invoice (A4) with insurance share and patient share, and receipt (A5); PDF via the browser | Implemented |
+| Finance dashboard: day, week, month, year; received by method and by source, invoiced, outstanding, expenses, net; per doctor (doctor share and center share from the commission % frozen on each invoice) and per department | Tested (API), Implemented (UI) |
+| Doctors in a center see only their own invoices and figures; center finance staff see the whole workspace | Tested |
+| Expenses with categories, shared (center) or per doctor, soft delete only | Tested |
+| Doctor commission % per center doctor, applied to invoices issued afterwards | Tested |
+| Insurers: platform directory (NSSF) plus each workspace's own; policies on the patient file with coverage %, ceiling, covered and excluded services, validity | Tested (API), Implemented (UI) |
+| Claims: prepared from an issued invoice (default amount = coverage % of the lines marked for insurance), submitted, approved / partially approved / rejected, reimbursed (records an insurance payment and receipt) | Tested. Attaching supporting documents from the patient file: Implemented |
+| Electronic claim submission to NSSF or private insurers | **Planned**. No insurer API is connected; claims are tracked here and sent by the clinic, and the screen says so |
+| Tax engine / e-invoicing to the Ministry of Finance | **Planned**. Tax is a manual amount per invoice for now |
+
+Decisions:
+- Numbers are assigned at issue, not at draft, so there are no gaps from deleted drafts. A voided invoice keeps its number.
+- Amounts in reports are converted to USD at each transaction's own saved rate, so past figures never move when today's rate changes.
+- Center owners do not get insurance or payment permissions by default; the demo seed adds an insurance desk account (sami@demo.medora) for that.
+
 ## 2026-11-25 · Release 2: consultations, prescriptions, medical documents
 
 Test run at end of session: 94 of 94 passing (schema 9, tenant isolation 55, shared package 7, API end-to-end 23). Web production build passes. Browser click-through with synthetic data as Dr Nour: start consultation from the waiting room, vitals, pediatric examination form, diagnosis, prescription from the catalog, issue, upload a PDF, sign, addendum, print page; Arabic layout; assistant view. No console errors.
