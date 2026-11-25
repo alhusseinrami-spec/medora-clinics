@@ -34,7 +34,7 @@ const GENERAL_HISTORY: Section = {
   ],
 };
 
-export interface Preset { specialty: string; kind: 'patient_profile' | 'dashboard'; name: string; schema: TemplateSchema }
+export interface Preset { specialty: string; kind: 'patient_profile' | 'dashboard' | 'examination'; name: string; schema: TemplateSchema }
 
 const profile = (specialty: string, name: string, sections: Section[], widgets: string[]): Preset[] => [
   { specialty, kind: 'patient_profile', name, schema: { format: 1, sections } },
@@ -148,6 +148,45 @@ export const PRESETS: Preset[] = [
   ], [...COMMON_WIDGETS, 'bp_followups']),
 
   ...profile('general_practice', 'General practice profile', [VITALS, GENERAL_HISTORY], [...COMMON_WIDGETS, 'chronic_followups']),
+];
+
+const exam = (specialty: string, name: string, sections: Section[]): Preset => ({ specialty, kind: 'examination', name, schema: { format: 1, sections } });
+const GENERAL_EXAM: Section = { key: 'general', label: L('General examination', 'Examen général', 'الفحص العام'), fields: [
+  sel('appearance', 'General appearance', ['well', 'unwell', 'distressed']), ta('cardiovascular', 'Cardiovascular'), ta('respiratory', 'Respiratory'),
+  ta('abdomen', 'Abdomen'), ta('neuro', 'Neurological'), ta('skin', 'Skin'), ta('other_findings', 'Other findings'),
+] };
+
+/** Examination forms used inside a consultation (Release 2). Same engine, same versioning as the profile. */
+export const EXAM_PRESETS: Preset[] = [
+  exam('pediatrics', 'Pediatric examination', [
+    { key: 'growth', label: L('Measurements', 'Mesures', 'القياسات'), fields: [n('weight_kg', 'Weight', 'kg', 0.3, 150, { step: 0.01 }), n('height_cm', 'Height', 'cm', 20, 220), n('head_cm', 'Head circumference', 'cm', 20, 65), n('temperature_c', 'Temperature', '°C', 30, 44, { step: 0.1 })] },
+    { key: 'development', label: L('Development', 'Développement', 'النمو'), fields: [sel('development', 'Development for age', ['appropriate', 'delayed', 'to_review']), ta('milestones_notes', 'Milestones observed')] },
+    GENERAL_EXAM,
+  ]),
+  exam('obgyn', 'Gynecological / obstetric examination', [
+    { key: 'obstetric', label: L('Obstetric examination', 'Examen obstétrical', 'الفحص التوليدي'), fields: [n('fundal_height_cm', 'Fundal height', 'cm', 5, 50), n('fetal_heart_rate', 'Fetal heart rate', 'bpm', 60, 220), sel('presentation', 'Presentation', ['cephalic', 'breech', 'transverse', 'unknown']), b('fetal_movements', 'Fetal movements felt')] },
+    { key: 'gynecological', label: L('Gynecological examination', 'Examen gynécologique', 'الفحص النسائي'), fields: [ta('external', 'External examination'), ta('speculum', 'Speculum'), ta('bimanual', 'Bimanual')] },
+    { key: 'ultrasound', label: L('Ultrasound', 'Échographie', 'الموجات فوق الصوتية'), fields: [ta('ultrasound_findings', 'Ultrasound findings'), n('estimated_fetal_weight_g', 'Estimated fetal weight', 'g', 10, 6000)] },
+  ]),
+  exam('orthopedics', 'Orthopedic examination', [
+    { key: 'joint', label: L('Joint examination', 'Examen articulaire', 'فحص المفاصل'), widget: 'body_map', fields: [t('joint', 'Joint examined'), n('pain_intensity', 'Pain intensity', '0-10', 0, 10), n('flexion_deg', 'Flexion', '°', 0, 180), n('extension_deg', 'Extension', '°', 0, 180), b('swelling', 'Swelling'), b('instability', 'Instability'), ta('special_tests', 'Special tests')] },
+    { key: 'imaging', label: L('Imaging', 'Imagerie', 'التصوير'), fields: [sel('imaging_type', 'Imaging', ['none', 'x_ray', 'mri', 'ct', 'ultrasound']), ta('imaging_findings', 'Findings')] },
+  ]),
+  exam('dentistry', 'Dental examination', [
+    { key: 'procedures', label: L('Procedures this session', 'Actes de la séance', 'إجراءات الجلسة'), widget: 'dental_chart', fields: [
+      rep('teeth', 'Teeth treated', [n('tooth', 'Tooth (FDI)', '', 11, 85, { required: true }), t('procedure', 'Procedure', { required: true }), t('surface', 'Surfaces'), t('notes', 'Notes')])] },
+    { key: 'oral', label: L('Oral examination', 'Examen buccal', 'الفحص الفموي'), fields: [sel('gingiva', 'Gingiva', ['healthy', 'gingivitis', 'periodontitis']), ta('soft_tissues', 'Soft tissues'), ta('occlusion', 'Occlusion')] },
+  ]),
+  exam('dermatology', 'Skin examination', [
+    { key: 'lesion', label: L('Lesion examination', 'Examen des lésions', 'فحص الآفات'), widget: 'body_map', fields: [
+      rep('lesions', 'Lesions', [t('location', 'Location', { required: true }), t('morphology', 'Morphology'), n('size_mm', 'Size', 'mm', 0, 500), t('dermoscopy', 'Dermoscopy')])] },
+    { key: 'aesthetic', label: L('Aesthetic procedure', 'Acte esthétique', 'الإجراء التجميلي'), fields: [t('procedure', 'Procedure'), t('area', 'Area'), t('product', 'Product / settings'), ta('notes', 'Notes')] },
+  ]),
+  exam('cardiology', 'Cardiovascular examination', [
+    { ...VITALS, key: 'vitals' },
+    { key: 'cardio', label: L('Cardiovascular examination', 'Examen cardiovasculaire', 'الفحص القلبي الوعائي'), fields: [ta('heart_sounds', 'Heart sounds'), t('murmur', 'Murmur'), b('edema', 'Peripheral edema'), ta('pulses', 'Peripheral pulses'), ta('ecg_today', 'ECG today')] },
+  ]),
+  exam('general_practice', 'General examination', [{ ...VITALS, key: 'vitals' }, GENERAL_EXAM]),
 ];
 
 /** Specialties without a full preset start from the general practice base (prepared, not yet specialized). */

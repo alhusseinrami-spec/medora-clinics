@@ -6,7 +6,7 @@ const NEXT: Record<AppointmentStatus, AppointmentStatus[]> = {
   confirmed: ['scheduled', 'arrived', 'cancelled', 'no_show'],
   arrived: ['waiting', 'in_consultation', 'cancelled'],
   waiting: ['in_consultation', 'cancelled'],
-  in_consultation: ['completed'],
+  in_consultation: ['completed', 'waiting'],
   completed: [],
   cancelled: [],
   no_show: [],

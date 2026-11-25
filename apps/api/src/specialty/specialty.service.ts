@@ -20,7 +20,7 @@ export class SpecialtyService {
   }
 
   /** The doctor's own published template if they customized one, otherwise the platform preset (or the base preset for prepared specialties). */
-  async effective(t: Tx, doctorMid: string, specialty: string, kind: 'patient_profile' | 'dashboard'): Promise<EffectiveTemplate> {
+  async effective(t: Tx, doctorMid: string, specialty: string, kind: 'patient_profile' | 'dashboard' | 'examination'): Promise<EffectiveTemplate> {
     const own = await t.one(`SELECT t.id AS template_id, v.id AS version_id, v.version, v.schema, t.based_on_template_id
       FROM clinical_templates t JOIN template_versions v ON v.template_id=t.id
       WHERE t.owner_membership_id=$1 AND t.kind=$2 AND t.specialty_code=$3 AND t.is_active AND v.published_at IS NOT NULL

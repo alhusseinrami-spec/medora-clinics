@@ -157,7 +157,7 @@ export class PatientsController {
     });
   }
 
-  /** Chronological timeline (Release 1: registration, profile changes, appointments). Clinical events join in Release 2. */
+  /** Chronological timeline. Clinical rows appear only when row-level security lets the caller read them. */
   @RequirePerm('patient.file.read') @Get(':id/timeline')
   timeline(@Param('id') pid: string, @Ctx() c: TenantInfo) {
     return this.db.tx(c, async (t) => {
@@ -171,6 +171,15 @@ export class PatientsController {
           UNION ALL
           SELECT 'specialty_profile', sp.updated_at, sp.id, sp.specialty_code, u.full_name FROM patient_specialty_profiles sp
             LEFT JOIN users u ON u.id=sp.updated_by WHERE sp.patient_id=$1
+          UNION ALL
+          SELECT 'consultation', coalesce(cn.signed_at, cn.created_at), cn.id, cn.status, u.full_name FROM consultations cn
+            JOIN memberships m ON m.id=cn.doctor_membership_id JOIN users u ON u.id=m.user_id WHERE cn.patient_id=$1
+          UNION ALL
+          SELECT 'prescription', coalesce(r.issued_at, r.created_at), r.id, r.status, u.full_name FROM prescriptions r
+            JOIN memberships m ON m.id=r.prescribed_by JOIN users u ON u.id=m.user_id WHERE r.patient_id=$1
+          UNION ALL
+          SELECT 'document', d.created_at, d.id, d.kind, u.full_name FROM medical_documents d
+            LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.patient_id=$1 AND d.deleted_at IS NULL
         ) x ORDER BY at DESC`, [pid]);
     });
   }

@@ -250,6 +250,148 @@ test('walk-in goes straight to the waiting room even when the slot is taken', as
   const w = await asst.post('/appointments/walk-in', { patientId: pChild, doctorMembershipId: ids.drCenterMid });
   assert.equal(w.status, 201, JSON.stringify(w.body));
   assert.equal(w.body.status, 'arrived'); assert.equal(w.body.is_walk_in, true);
+  ids.walkIn = w.body.id;
+});
+
+// ---------------- Release 2: consultations, prescriptions, documents ----------------
+const drC = () => { const c = new Client('Dr Nour at the center'); c.cookie = dr.cookie; c.org = ids.center; return c; };
+const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+async function upload(c: Client, pid: string, bytes: Buffer, type: string, q: string) {
+  const r = await fetch(`${base}/api/patients/${pid}/documents?${q}`, { method: 'POST', headers: { cookie: c.cookie, 'x-org-id': c.org, 'content-type': type }, body: new Uint8Array(bytes) });
+  return { status: r.status, body: await r.json() };
+}
+
+test('consultation: start from the waiting room, specialty exam form, validation, diagnoses', async () => {
+  const d = drC();
+  assert.equal((await asst.post('/consultations', { appointmentId: ids.walkIn })).status, 403, 'assistants do not write consultations');
+  assert.equal((await drB.post('/consultations', { appointmentId: ids.walkIn })).status, 404, 'another doctor cannot even see the appointment');
+  const s = await d.post('/consultations', { appointmentId: ids.walkIn });
+  assert.equal(s.status, 201, JSON.stringify(s.body));
+  ids.cons = s.body.id;
+  assert.equal(s.body.status, 'draft');
+  assert.equal(s.body.specialty_code, 'pediatrics');
+  assert.ok(s.body.template.schema.sections.some((x: any) => x.key === 'growth'), 'pediatric examination form');
+  const again = await d.post('/consultations', { appointmentId: ids.walkIn });
+  assert.equal(again.body.id, ids.cons, 'one consultation per appointment');
+  assert.ok(!(await d.get('/waiting-room')).body.some((a: any) => a.appointment_id === ids.walkIn), 'patient left the queue');
+  const bad = await d.patch(`/consultations/${ids.cons}`, { specialtyData: { growth: { weight_kg: 900 } } });
+  assert.equal(bad.status, 400); assert.ok(bad.body.fieldErrors.length);
+  const ok = await d.patch(`/consultations/${ids.cons}`, { chiefComplaint: 'Fever and ear pain for 2 days', clinicalNotes: 'Synthetic note',
+    vitalSigns: { temperature_c: 38.6, pulse: 120 }, specialtyData: { growth: { weight_kg: 12.4, temperature_c: 38.6 } }, followUpDate: '2026-12-10' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.specialty_data.growth.weight_kg, 12.4);
+  const dx = await d.put(`/consultations/${ids.cons}/diagnoses`, { diagnoses: [{ code: 'H66.9', description: 'Otitis media', isPrimary: true }, { code: null, description: 'Fever' }] });
+  assert.equal(dx.status, 200, JSON.stringify(dx.body)); assert.equal(dx.body.diagnoses.length, 2);
+  assert.equal((await drB.get(`/consultations/${ids.cons}`)).status, 404, 'other doctor cannot read it');
+  assert.equal((await stranger.req('GET', `/consultations/${ids.cons}`, undefined, { org: ids.center })).status, 403);
+  assert.equal((await asst.get(`/consultations/${ids.cons}`)).status, 403, 'assistant has no clinical notes permission');
+});
+
+test('prescriptions: catalog search, draft, issue, frozen, cancel, templates, doctor only', async () => {
+  const d = drC();
+  const meds = await d.get('/medications?q=amoxi');
+  assert.equal(meds.status, 200); assert.ok(meds.body.length >= 3);
+  assert.ok(meds.body.every((m: any) => /amoxi/i.test(m.name)));
+  const amox = meds.body.find((m: any) => m.strength === '250 mg/5 ml');
+  const items = [{ medicationId: amox.id, medicationName: 'Amoxicillin 250 mg/5 ml suspension', dosage: '5 ml', frequency: '3 times a day', duration: '7 days', instructions: 'After meals', notes: null }];
+  assert.equal((await asst.post('/prescriptions', { patientId: pChild, items, notes: null })).status, 403, 'assistants cannot prescribe');
+  const r = await d.post('/prescriptions', { patientId: pChild, consultationId: ids.cons, items, notes: 'Synthetic' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  ids.rx = r.body.id;
+  assert.equal(r.body.status, 'draft'); assert.equal(r.body.items.length, 1);
+  assert.equal((await d.post(`/consultations/${ids.cons}/sign`)).status, 409, 'cannot sign with a draft prescription pending');
+  const edit = await d.patch(`/prescriptions/${ids.rx}`, { notes: null, items: [...items, { medicationId: null, medicationName: 'Paracetamol 120 mg/5 ml', dosage: '6 ml', frequency: 'every 6 hours if fever', duration: '3 days', instructions: null, notes: null }] });
+  assert.equal(edit.status, 200); assert.equal(edit.body.items.length, 2);
+  const iss = await d.post(`/prescriptions/${ids.rx}/issue`);
+  assert.equal(iss.status, 201, JSON.stringify(iss.body)); assert.equal(iss.body.status, 'issued'); assert.ok(iss.body.issued_at);
+  assert.equal(iss.body.organization_name, 'Cedar Synthetic Medical Center');
+  const locked = await d.patch(`/prescriptions/${ids.rx}`, { notes: 'changed' });
+  assert.equal(locked.status, 409); assert.equal(locked.body.code, 'record_locked');
+  assert.equal((await d.req('DELETE', `/prescriptions/${ids.rx}`)).status, 409);
+  const sh = await d.post(`/prescriptions/${ids.rx}/share`, { shared: true });
+  assert.equal(sh.body.shared_with_patient, true); assert.equal(sh.body.delivery.email, 'awaiting_credentials');
+  assert.equal((await drB.get(`/prescriptions/${ids.rx}`)).status, 404);
+  assert.equal((await owner.get(`/prescriptions/${ids.rx}`)).status, 403, 'center owner has no prescription permission');
+  // A second, standalone prescription is cancelled after issue.
+  const r2 = await d.post('/prescriptions', { patientId: pChild, items, notes: null });
+  await d.post(`/prescriptions/${r2.body.id}/issue`);
+  assert.equal((await d.post(`/prescriptions/${r2.body.id}/cancel`, { reason: 'x' })).status, 400, 'a reason is required');
+  const can = await d.post(`/prescriptions/${r2.body.id}/cancel`, { reason: 'Wrong dose' });
+  assert.equal(can.body.status, 'cancelled');
+  assert.equal((await d.post(`/prescriptions/${r2.body.id}/cancel`, { reason: 'Again' })).status, 409);
+  const list = await d.get(`/patients/${pChild}/prescriptions`);
+  assert.equal(list.body.length, 2);
+  // Templates
+  const t = await d.post('/prescription-templates', { name: 'Child otitis', notes: null, items });
+  assert.equal(t.status, 201, JSON.stringify(t.body));
+  const fromTpl = await d.post('/prescriptions', { patientId: pChild, items: [], notes: null, templateId: t.body.id });
+  assert.equal(fromTpl.body.items.length, 1);
+  assert.equal((await d.req('DELETE', `/prescriptions/${fromTpl.body.id}`)).status, 200, 'drafts can be deleted');
+  assert.equal((await drB.get('/prescription-templates')).body.length, 0, 'templates are private to their doctor');
+  const custom = await d.post('/medications', { name: 'Synthetic compounded cream', strength: null, form: 'cream', route: 'topical' });
+  assert.equal(custom.status, 201);
+  assert.equal((await stranger.get('/medications?q=compounded')).body.length, 0, 'custom medications stay in their workspace');
+});
+
+test('documents: encrypted upload, type sniffing, download audited, history permission, soft delete', async () => {
+  const d = drC();
+  const fake = await upload(asst, pChild, Buffer.from('not a pdf'), 'application/pdf', 'kind=lab_result&title=CBC');
+  assert.equal(fake.status, 400, 'content must match the declared type');
+  assert.equal((await upload(asst, pChild, PDF, 'text/html', 'kind=lab_result&title=CBC')).status, 400, 'html is not accepted');
+  const up = await upload(asst, pChild, PDF, 'application/pdf', 'kind=lab_result&title=CBC%20synthetic&filename=cbc.pdf');
+  assert.equal(up.status, 201, JSON.stringify(up.body));
+  ids.doc = up.body.id;
+  const d2 = await upload(d, pChild, PDF, 'application/pdf', `kind=imaging&title=Ear%20photo&consultationId=${ids.cons}`);
+  assert.equal(d2.status, 201, JSON.stringify(d2.body));
+  // Stored bytes are encrypted on disk.
+  const { config } = await import('../src/config.js');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const dir = path.join(config.storageDir, ids.center);
+  const onDisk = fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f)));
+  assert.ok(onDisk.length >= 2 && onDisk.every((b) => !b.includes(Buffer.from('%PDF'))), 'no plaintext on disk');
+  assert.equal((await asst.get(`/patients/${pChild}/documents`)).body.length, 1, 'assistant without history permission sees only their own upload');
+  assert.equal((await d.get(`/patients/${pChild}/documents`)).body.length, 2);
+  const dl = await fetch(`${base}/api/documents/${ids.doc}/content?download=1`, { headers: { cookie: d.cookie, 'x-org-id': d.org } });
+  assert.equal(dl.status, 200);
+  assert.ok(Buffer.from(await dl.arrayBuffer()).equals(PDF), 'decrypted bytes match');
+  assert.match(dl.headers.get('content-disposition') ?? '', /attachment; filename="cbc.pdf"/);
+  assert.equal(dl.headers.get('cache-control'), 'private, no-store');
+  assert.equal((await fetch(`${base}/api/documents/${ids.doc}/content`, { headers: { cookie: drB.cookie, 'x-org-id': ids.center } })).status, 404);
+  const log = await owner.get('/org/audit');
+  assert.ok(log.body.some((e: any) => e.action === 'document.download' && e.entity_id === ids.doc));
+  const share = await d.patch(`/documents/${ids.doc}`, { sharedWithPatient: true });
+  assert.equal(share.body.shared_with_patient, true);
+  assert.equal((await d.req('DELETE', `/documents/${ids.doc}`)).status, 200);
+  assert.equal((await d.get(`/patients/${pChild}/documents`)).body.length, 1, 'deleted documents leave the file');
+});
+
+test('signing locks the consultation; addenda; appointment completed; timeline shows clinical events', async () => {
+  const d = drC();
+  const s = await d.post(`/consultations/${ids.cons}/sign`);
+  assert.equal(s.status, 201, JSON.stringify(s.body));
+  assert.equal(s.body.status, 'signed'); assert.ok(s.body.signed_at);
+  const ch = await d.patch(`/consultations/${ids.cons}`, { clinicalNotes: 'rewrite history' });
+  assert.equal(ch.status, 409); assert.equal(ch.body.code, 'record_locked');
+  assert.equal((await d.put(`/consultations/${ids.cons}/diagnoses`, { diagnoses: [] })).status, 409);
+  assert.equal((await d.req('DELETE', `/consultations/${ids.cons}`)).status, 409);
+  assert.equal((await d.post('/prescriptions', { patientId: pChild, consultationId: ids.cons, items: [], notes: null })).status, 409);
+  const add = await d.post(`/consultations/${ids.cons}/addenda`, { body: 'Parents called: fever settled.' });
+  assert.equal(add.status, 201); assert.equal(add.body.addenda.length, 1);
+  const appts = await d.get(`/appointments?from=${new Date(Date.now() - 86400e3).toISOString()}&to=${new Date(Date.now() + 86400e3).toISOString()}`);
+  assert.equal(appts.body.find((a: any) => a.id === ids.walkIn)?.status, 'completed');
+  const list = await d.get(`/patients/${pChild}/consultations`);
+  assert.equal(list.body[0].status, 'signed'); assert.deepEqual(list.body[0].diagnoses, ['Otitis media', 'Fever']);
+  const tl = await d.get(`/patients/${pChild}/timeline`);
+  const kinds = new Set(tl.body.map((e: any) => e.kind));
+  for (const k of ['consultation', 'prescription', 'document', 'appointment', 'registered']) assert.ok(kinds.has(k), `timeline has ${k}`);
+  const tlA = await asst.get(`/patients/${pChild}/timeline`);
+  assert.ok(!tlA.body.some((e: any) => e.kind === 'consultation'), 'assistant timeline hides confidential consultations');
+  // A draft can be discarded and the patient returns to the queue.
+  const w = await asst.post('/appointments/walk-in', { patientId: pChild, doctorMembershipId: ids.drCenterMid });
+  const c2 = await d.post('/consultations', { appointmentId: w.body.id });
+  assert.equal((await d.req('DELETE', `/consultations/${c2.body.id}`)).status, 200);
+  assert.ok((await d.get('/waiting-room')).body.some((a: any) => a.appointment_id === w.body.id));
 });
 
 test('permissions: individually configurable, no escalation, prescriptions only for doctors', async () => {

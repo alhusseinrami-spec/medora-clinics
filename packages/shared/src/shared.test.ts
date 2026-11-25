@@ -46,3 +46,9 @@ test('only doctors can hold prescription.create', () => {
   assert.ok(isGrantable('doctor', 'prescription.create'));
   assert.ok(!isGrantable('assistant', 'prescription.create'));
 });
+
+test('every examination preset is valid and covers the 7 specialties', async () => {
+  const { EXAM_PRESETS } = await import('./index.js');
+  for (const p of EXAM_PRESETS) assert.deepEqual(validateSchema(p.schema), [], p.specialty);
+  assert.equal(new Set(EXAM_PRESETS.map((p) => p.specialty)).size, 7);
+});

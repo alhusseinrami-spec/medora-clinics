@@ -22,7 +22,10 @@ export class ErrorFilter implements ExceptionFilter {
     };
     const m = err?.code && map[err.code];
     if (m) {
-      const message = err.code === 'P0001' ? err.message : m[1];
+      // Record-protection triggers raise check_violation without a constraint name: their message is meant for people.
+      const fromTrigger = err.code === '23514' && !err.constraint;
+      const message = err.code === 'P0001' || fromTrigger ? err.message : m[1];
+      if (fromTrigger) return res.status(409).json({ message, code: 'record_locked' });
       const body: Record<string, unknown> = { message };
       if (err.code === '23P01') body.code = 'double_booking';
       return res.status(m[0]).json(body);
