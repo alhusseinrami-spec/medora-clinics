@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: medora
+          POSTGRES_PASSWORD: medora_dev
+          POSTGRES_DB: medora
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U medora" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://medora:medora_dev@localhost:5432/medora
+      APP_DATABASE_URL: postgres://medora_app:medora_app_dev@localhost:5432/medora
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build shared package
+        run: npm run build -w @medora/shared
+      - name: Database, tenant isolation, shared and API end-to-end tests
+        run: npm test
+      - name: Typecheck and build the web app
+        run: npm run build -w @medora/web
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

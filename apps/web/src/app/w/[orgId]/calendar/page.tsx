@@ -1,0 +1,92 @@
+'use client';
+import Link from 'next/link';
+import { useCallback, useMemo, useState } from 'react';
+import { Badge, Button, Card, Dialog, ErrorNote, Field, Input, Select, cx, fmtTime } from '@/components/ui';
+import { Forbidden, PageTitle } from '@/components/Shell';
+import { AppointmentDialog } from '@/components/AppointmentDialog';
+import { ApptActions } from '@/components/ApptActions';
+import { get, patch } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
+import { useLiveReload, useWorkspace } from '@/lib/workspace';
+import { useDoctors, toLocalInput } from '@/lib/hooks';
+
+const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 07:00 - 19:00
+const PX = 56; // px per hour
+
+export default function Calendar() {
+  const { t, lang, status } = useI18n(); const { can, orgId, org } = useWorkspace(); const doctors = useDoctors();
+  const [view, setView] = useState<'day' | 'week'>('day'); const [anchor, setAnchor] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [doctor, setDoctor] = useState(''); const [appts, setAppts] = useState<any[]>([]); const [create, setCreate] = useState<Date | null>(null); const [sel, setSel] = useState<any>(null);
+  const days = useMemo(() => {
+    if (view === 'day') return [anchor];
+    const s = new Date(anchor); s.setDate(s.getDate() - ((s.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => new Date(s.getTime() + i * 86400e3));
+  }, [anchor, view]);
+  const load = useCallback(() => {
+    const from = days[0]; const to = new Date(days[days.length - 1].getTime() + 86400e3);
+    get(`/appointments?from=${from.toISOString()}&to=${to.toISOString()}${doctor ? `&doctor=${doctor}` : ''}`).then(setAppts).catch(() => setAppts([]));
+  }, [days, doctor]);
+  useLiveReload(load);
+  if (!can('appointment.manage')) return <Forbidden />;
+  const shift = (n: number) => setAnchor(new Date(anchor.getTime() + n * (view === 'day' ? 1 : 7) * 86400e3));
+  const title = view === 'day' ? anchor.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { weekday: 'long', day: 'numeric', month: 'long' })
+    : `${days[0].toLocaleDateString(lang, { day: 'numeric', month: 'short' })} – ${days[6].toLocaleDateString(lang, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  return (
+    <>
+      <PageTitle title={t('calendar')} sub={title} actions={<Button onClick={() => setCreate(new Date(Date.now() + 3600e3))}>{t('newAppointment')}</Button>} />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => shift(-1)}>{lang === 'ar' ? '→' : '←'} {t('prev')}</Button>
+        <Button variant="secondary" size="sm" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setAnchor(d); }}>{t('today')}</Button>
+        <Button variant="secondary" size="sm" onClick={() => shift(1)}>{t('next')} {lang === 'ar' ? '←' : '→'}</Button>
+        <div className="ms-auto flex gap-2">
+          {doctors.length > 1 && <Select value={doctor} onChange={(e) => setDoctor(e.target.value)} className="!h-8 w-48"><option value="">{t('doctor')}: all</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.full_name}</option>)}</Select>}
+          <div className="flex rounded-[10px] border border-line p-0.5">{(['day', 'week'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={cx('rounded-lg px-3 py-1 text-sm', view === v ? 'bg-brand text-white' : 'text-muted')}>{t(v)}</button>)}</div>
+        </div>
+      </div>
+      <Card className="overflow-x-auto"><div className="flex min-w-[640px]">
+        <div className="w-12 shrink-0 pt-8">{HOURS.map((h) => <div key={h} style={{ height: PX }} className="tabular -mt-2 text-end text-[11px] text-muted pe-2">{String(h).padStart(2, '0')}:00</div>)}</div>
+        {days.map((d) => {
+          const dayAppts = appts.filter((a) => new Date(a.starts_at).toDateString() === d.toDateString());
+          const isToday = d.toDateString() === new Date().toDateString();
+          return <div key={d.toISOString()} className="min-w-0 flex-1 border-s border-line">
+            <div className={cx('h-8 text-center text-xs font-medium', isToday ? 'text-brand' : 'text-muted')}>{d.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { weekday: 'short', day: 'numeric' })}</div>
+            <div className="relative" style={{ height: HOURS.length * PX }}>
+              {HOURS.map((h) => <button key={h} aria-label={`New appointment ${h}:00`} onClick={() => { const s = new Date(d); s.setHours(h, 0, 0, 0); setCreate(s); }} className="block w-full border-t border-line/70 hover:bg-brand-soft/50" style={{ height: PX }} />)}
+              {dayAppts.map((a) => {
+                const s = new Date(a.starts_at); const e = new Date(a.ends_at);
+                const top = (s.getHours() + s.getMinutes() / 60 - HOURS[0]) * PX; const h = Math.max(((e.getTime() - s.getTime()) / 3600e3) * PX, 22);
+                return <button key={a.id} onClick={() => setSel(a)} style={{ top, height: h }} className={cx('absolute inset-x-1 overflow-hidden rounded-md border-s-4 bg-card px-1.5 py-0.5 text-start text-xs shadow-sm ring-1 ring-line',
+                  a.status === 'cancelled' || a.status === 'no_show' ? 'border-danger opacity-50' : a.status === 'completed' ? 'border-success' : a.status === 'arrived' || a.status === 'waiting' ? 'border-accent' : a.status === 'in_consultation' ? 'border-brand' : 'border-info')}>
+                  <span className="font-semibold">{fmtTime(a.starts_at, lang)} {a.patient_name}</span>{h > 30 && <span className="block truncate text-muted">{org.me.orgWide || doctors.length > 1 ? a.doctor_name : a.service_name ?? ''}</span>}
+                </button>;
+              })}
+            </div></div>;
+        })}
+      </div></Card>
+      <AppointmentDialog open={!!create} start={create ?? undefined} onClose={() => setCreate(null)} onSaved={load} />
+      <Dialog open={!!sel} onClose={() => setSel(null)} title={sel?.patient_name ?? ''}>
+        {sel && <ApptDetail a={sel} orgId={orgId} onChanged={() => { load(); setSel(null); }} />}
+      </Dialog>
+    </>
+  );
+}
+
+function ApptDetail({ a, orgId, onChanged }: { a: any; orgId: string; onChanged: () => void }) {
+  const { t, lang, status } = useI18n();
+  const [when, setWhen] = useState(toLocalInput(new Date(a.starts_at))); const [mins, setMins] = useState(Math.round((Date.parse(a.ends_at) - Date.parse(a.starts_at)) / 60000));
+  const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const canMove = a.status === 'scheduled' || a.status === 'confirmed';
+  const reschedule = async () => { setBusy(true); setErr(null); try { await patch(`/appointments/${a.id}`, { startsAt: new Date(when).toISOString(), durationMinutes: mins }); onChanged(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  return <div className="space-y-4 text-sm">
+    <div className="flex items-center justify-between"><span className="tabular">{new Date(a.starts_at).toLocaleDateString(lang)} · {fmtTime(a.starts_at, lang)}–{fmtTime(a.ends_at, lang)}</span><Badge status={a.status}>{status(a.status)}</Badge></div>
+    <p className="text-muted">{a.doctor_name}{a.service_name ? ` · ${a.service_name}` : ''}{a.room_name ? ` · ${a.room_name}` : ''}{a.is_walk_in ? ` · ${t('walkIn')}` : ''}</p>
+    {a.notes && <p>{a.notes}</p>}
+    <Link href={`/w/${orgId}/patients/${a.patient_id}`} className="text-brand hover:underline">→ {t('patient')}</Link>
+    <ApptActions appt={a} onDone={onChanged} />
+    {canMove && <div className="grid grid-cols-[1fr_6rem_auto] items-end gap-2 border-t border-line pt-4">
+      <Field label={t('start')}><Input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></Field>
+      <Field label={t('duration')}><Input type="number" min={5} value={mins} onChange={(e) => setMins(Number(e.target.value))} /></Field>
+      <Button variant="secondary" busy={busy} onClick={reschedule}>{t('save')}</Button></div>}
+    <ErrorNote error={err} />
+  </div>;
+}

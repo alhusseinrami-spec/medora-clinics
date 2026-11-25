@@ -1,0 +1,28 @@
+{
+  "name": "medora",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:migrate": "node db/migrate.js",
+    "db:reset": "node db/migrate.js --reset",
+    "db:seed": "node db/seed_synthetic.mjs",
+    "test:db": "node db/smoke_test.js && node db/rls_test.js",
+    "build": "npm run build -w @medora/shared && npm run build -w @medora/api && npm run build -w @medora/web",
+    "test": "npm run test:db && npm run test -w @medora/shared && npm run test -w @medora/api",
+    "db:presets": "node db/sync_presets.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.10",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,3 +1,41 @@
 # MEDORA CLINICS
 
-Smart healthcare. Simplified.
+Multi-tenant healthcare practice platform. Architecture: [`docs/architecture/MEDORA-architecture.md`](docs/architecture/MEDORA-architecture.md). Progress: [`DEVLOG.md`](DEVLOG.md). Screenshots: [`docs/screenshots/`](docs/screenshots/).
+
+![CI](https://github.com/alhusseinrami-spec/medora-clinics/actions/workflows/ci.yml/badge.svg)
+
+All data in this repository is synthetic. Passwords in this README and in the code are local development defaults only.
+
+## Layout
+```
+db/                 migrations (001-005), migrate.js, sync_presets.js, smoke_test.js, rls_test.js, seed_synthetic.mjs
+packages/shared/    permissions, role defaults, appointment status machine, specialty template engine + presets
+apps/api/           NestJS API (port 4000, prefix /api, WebSocket /ws) + end-to-end tests
+apps/web/           Next.js + Tailwind web app / PWA (port 3000, proxies /api to the API)
+```
+
+## Run locally (Node 22, PostgreSQL 16)
+```bash
+pg_ctlcluster 16 main start
+su postgres -c "psql -c \"CREATE ROLE medora LOGIN PASSWORD 'medora_dev' CREATEROLE;\" -c \"CREATE DATABASE medora OWNER medora;\""
+npm ci
+npm run build -w @medora/shared
+npm run db:reset && npm run db:presets      # dev only: drops and recreates the schema
+npm run build -w @medora/api && npm start -w @medora/api &
+npm run db:seed                              # synthetic demo accounts, password Demo-Medora-2026
+npm run build -w @medora/web && npm start -w @medora/web
+```
+Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@ or maya@demo.medora.
+
+`npm test` runs every suite. It resets the dev database, so stop the API first and re-seed afterwards.
+
+## Configuration (environment)
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Owner connection, migrations only |
+| `APP_DATABASE_URL` | API connection as `medora_app` (row-level security applies) |
+| `APP_DB_PASSWORD` | Password set for `medora_app` by migrate.js (required in production) |
+| `MFA_ENC_KEY` | 64 hex chars, encrypts TOTP secrets (required in production) |
+| `WEB_ORIGIN`, `WEB_BASE_URL` | CORS origin and links in invitations |
+| `EMAIL_PROVIDER_API_KEY` | Not wired yet: email stays "awaiting credentials" |
+| `API_URL` (web) / `NEXT_PUBLIC_WS_URL` | Where the web app reaches the API / WebSocket |
