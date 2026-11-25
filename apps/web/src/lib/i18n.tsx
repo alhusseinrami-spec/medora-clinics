@@ -1,11 +1,12 @@
 'use client';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { CLINICAL } from './i18n-clinical';
 
 export type Lang = 'en' | 'ar' | 'fr';
 type Dict = Record<string, string>;
 
 const en: Dict = {
-  vaccinationsDue: 'Vaccinations due (30 days)', deliveriesDue: 'Expected deliveries (60 days)', patientArrived: 'Patient arrived', laterReleases: 'Consultations, prescriptions and payments arrive in Releases 2 and 3.',
+  vaccinationsDue: 'Vaccinations due (30 days)', deliveriesDue: 'Expected deliveries (60 days)', patientArrived: 'Patient arrived', laterReleases: 'Payments and insurance arrive in Release 3.',
   tagline: 'Smart healthcare. Simplified.', signIn: 'Sign in', signOut: 'Sign out', email: 'Email', password: 'Password',
   createAccount: 'Create an account', forgot: 'Forgot password?', continue: 'Continue', save: 'Save', cancel: 'Cancel', saved: 'Saved',
   loading: 'Loading…', search: 'Search', add: 'Add', edit: 'Edit', close: 'Close', back: 'Back', yes: 'Yes', no: 'No', none: 'None',
@@ -36,7 +37,7 @@ const en: Dict = {
   resetPassword: 'Reset password', newPassword: 'New password', liveConnected: 'Live', liveOffline: 'Reconnecting…', freeSlots: 'Free slots',
 };
 const fr: Dict = {
-  vaccinationsDue: 'Vaccins à faire (30 jours)', deliveriesDue: 'Accouchements prévus (60 jours)', patientArrived: 'Patient arrivé', laterReleases: 'Consultations, ordonnances et paiements arrivent dans les versions 2 et 3.',
+  vaccinationsDue: 'Vaccins à faire (30 jours)', deliveriesDue: 'Accouchements prévus (60 jours)', patientArrived: 'Patient arrivé', laterReleases: 'Paiements et assurances arrivent dans la version 3.',
   tagline: 'La santé intelligente. Simplifiée.', signIn: 'Se connecter', signOut: 'Se déconnecter', email: 'E-mail', password: 'Mot de passe',
   createAccount: 'Créer un compte', forgot: 'Mot de passe oublié ?', continue: 'Continuer', save: 'Enregistrer', cancel: 'Annuler', saved: 'Enregistré',
   loading: 'Chargement…', search: 'Rechercher', add: 'Ajouter', edit: 'Modifier', close: 'Fermer', back: 'Retour', yes: 'Oui', no: 'Non', none: 'Aucun',
@@ -67,7 +68,7 @@ const fr: Dict = {
   resetPassword: 'Réinitialiser le mot de passe', newPassword: 'Nouveau mot de passe', liveConnected: 'En direct', liveOffline: 'Reconnexion…', freeSlots: 'Créneaux libres',
 };
 const ar: Dict = {
-  vaccinationsDue: 'لقاحات مستحقة (30 يومًا)', deliveriesDue: 'ولادات متوقعة (60 يومًا)', patientArrived: 'وصل المريض', laterReleases: 'المعاينات والوصفات والمدفوعات تأتي في الإصدارين 2 و3.',
+  vaccinationsDue: 'لقاحات مستحقة (30 يومًا)', deliveriesDue: 'ولادات متوقعة (60 يومًا)', patientArrived: 'وصل المريض', laterReleases: 'المدفوعات والتأمين تأتي في الإصدار 3.',
   tagline: 'رعاية صحية ذكية. ببساطة.', signIn: 'تسجيل الدخول', signOut: 'تسجيل الخروج', email: 'البريد الإلكتروني', password: 'كلمة المرور',
   createAccount: 'إنشاء حساب', forgot: 'نسيت كلمة المرور؟', continue: 'متابعة', save: 'حفظ', cancel: 'إلغاء', saved: 'تم الحفظ',
   loading: 'جارٍ التحميل…', search: 'بحث', add: 'إضافة', edit: 'تعديل', close: 'إغلاق', back: 'رجوع', yes: 'نعم', no: 'لا', none: 'لا شيء',
@@ -97,7 +98,7 @@ const ar: Dict = {
   noPermission: 'ليست لديك صلاحية لعرض هذا.', acceptInvitation: 'قبول الدعوة', invitedAs: 'أنت مدعو بصفة',
   resetPassword: 'إعادة تعيين كلمة المرور', newPassword: 'كلمة مرور جديدة', liveConnected: 'مباشر', liveOffline: 'إعادة الاتصال…', freeSlots: 'أوقات متاحة',
 };
-const DICTS: Record<Lang, Dict> = { en, fr, ar };
+const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en }, fr: { ...fr, ...CLINICAL.fr }, ar: { ...ar, ...CLINICAL.ar } };
 
 export const STATUS_LABEL: Record<Lang, Record<string, string>> = {
   en: { scheduled: 'Scheduled', confirmed: 'Confirmed', arrived: 'Arrived', waiting: 'Waiting', in_consultation: 'In consultation', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' },
@@ -121,7 +122,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
   const setLang = (l: Lang) => { localStorage.setItem('medora.lang', l); setLangState(l); };
-  const t = (k: string) => DICTS[lang][k] ?? en[k] ?? k;
+  const t = (k: string) => DICTS[lang][k] ?? DICTS.en[k] ?? k;
   return <Ctx.Provider value={{ lang, setLang, t, dir: lang === 'ar' ? 'rtl' : 'ltr', status: (s) => STATUS_LABEL[lang][s] ?? s, role: (r) => ROLE_LABEL[lang][r] ?? r }}>{children}</Ctx.Provider>;
 }
 export const useI18n = () => useContext(Ctx);

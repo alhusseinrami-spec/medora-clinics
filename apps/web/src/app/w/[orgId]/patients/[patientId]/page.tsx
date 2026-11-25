@@ -10,6 +10,10 @@ import { ApiError, get, patch, post, put } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 import { useLoad, type Member } from '@/lib/hooks';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { PrescriptionEditor, newPrescription } from '@/components/PrescriptionEditor';
+import { DocumentsPanel } from '@/components/DocumentsPanel';
 
 export default function PatientFile({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
@@ -21,6 +25,9 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
   if (err) return <ErrorNote error={err} />;
   if (!p) return <p className="text-muted">{t('loading')}</p>;
   const tabs = [{ key: 'overview', label: t('overview') }, ...(can('patient.history.read') && org.me.actingDoctors.length ? [{ key: 'specialty', label: t('specialtyLabel') }] : []),
+    ...(can('clinical_notes.read') ? [{ key: 'consultations', label: t('consultations') }] : []),
+    ...(can('prescription.view') ? [{ key: 'prescriptions', label: t('prescriptions') }] : []),
+    { key: 'documents', label: t('documents') },
     ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []), { key: 'timeline', label: t('timeline') }];
   const age = p.date_of_birth ? Math.floor((Date.now() - Date.parse(p.date_of_birth)) / (365.25 * 86400e3)) : null;
   return (
@@ -46,6 +53,9 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
           </Card>
         </div>}
         {tab === 'specialty' && <SpecialtyTab patientId={patientId} />}
+        {tab === 'consultations' && <Consultations patientId={patientId} />}
+        {tab === 'prescriptions' && <Prescriptions patientId={patientId} />}
+        {tab === 'documents' && <DocumentsPanel patientId={patientId} />}
         {tab === 'appointments' && <PatientAppointments patientId={patientId} />}
         {tab === 'timeline' && <Timeline patientId={patientId} />}
       </div>
@@ -85,14 +95,59 @@ function PatientAppointments({ patientId }: { patientId: string }) {
 }
 
 function Timeline({ patientId }: { patientId: string }) {
-  const { t, lang, status } = useI18n();
+  const { t, lang, status } = useI18n(); const { orgId } = useWorkspace();
   const { data } = useLoad<any[]>(`/patients/${patientId}/timeline`);
   if (!data) return <p className="text-muted">{t('loading')}</p>;
+  const line = (e: any) => {
+    switch (e.kind) {
+      case 'registered': return t('patientRegistered');
+      case 'appointment': return <>{t('appointments')} · {e.doctor} · <Badge status={e.status}>{status(e.status)}</Badge></>;
+      case 'consultation': return <Link className="hover:underline" href={`/w/${orgId}/consultations/${e.ref}`}>{t('consultation')} · {e.doctor} · <Badge status={e.status}>{t(e.status)}</Badge></Link>;
+      case 'prescription': return <>{t('prescription')} · {e.doctor} · <Badge status={e.status === 'issued' ? 'issued' : e.status === 'draft' ? 'draft' : 'cancelled'}>{e.status === 'cancelled' ? t('cancelledRx') : t(e.status)}</Badge></>;
+      case 'document': return <>{t('documents')} · {t(e.status)} · {e.doctor ?? '—'}</>;
+      default: return `${t('specialtyUpdated')} (${e.status}) · ${e.doctor ?? '—'}`;
+    }
+  };
   return <Card><ol className="relative space-y-4 border-s border-line ps-5">{data.map((e, i) => <li key={i} className="relative">
     <span className="absolute -start-[25px] top-1.5 size-2.5 rounded-full bg-brand" />
     <p className="text-xs text-muted tabular">{fmtDate(e.at, lang)} {fmtTime(e.at, lang)}</p>
-    <p className="text-sm">{e.kind === 'registered' ? 'Patient registered' : e.kind === 'appointment' ? <>Appointment with {e.doctor} · <Badge status={e.status}>{status(e.status)}</Badge></> : `Specialty profile updated (${e.status}) by ${e.doctor ?? '—'}`}</p>
-  </li>)}</ol><p className="mt-4 text-xs text-muted">Consultations, prescriptions, documents and invoices join this timeline in Releases 2 and 3.</p></Card>;
+    <p className="text-sm">{line(e)}</p>
+  </li>)}</ol></Card>;
+}
+
+function Consultations({ patientId }: { patientId: string }) {
+  const { t, lang } = useI18n(); const { orgId, org } = useWorkspace(); const router = useRouter();
+  const { data } = useLoad<any[]>(`/patients/${patientId}/consultations`); const [err, setErr] = useState<unknown>(null);
+  const isDoctor = !!org.me.doctorMembershipId;
+  const start = async () => { try { const c = await post('/consultations', { patientId }); router.push(`/w/${orgId}/consultations/${c.id}`); } catch (e) { setErr(e); } };
+  return <div className="space-y-4">
+    {isDoctor ? <div className="flex justify-end"><Button onClick={start}>+ {t('newConsultation')}</Button></div> : <p className="text-sm text-muted">{t('onlyDoctors')}</p>}
+    <ErrorNote error={err} />
+    {!data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noConsultations')}</Empty> :
+      <Card><ul className="divide-y divide-line">{data.map((c) => <li key={c.id}><Link href={`/w/${orgId}/consultations/${c.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5 hover:bg-surface">
+        <div><p className="font-medium">{c.chief_complaint || t('consultation')}</p>
+          <p className="text-xs text-muted tabular">{fmtDate(c.created_at, lang)} · {c.doctor_name}{c.diagnoses.length ? ` · ${c.diagnoses.join(', ')}` : ''}{c.addenda ? ` · ${c.addenda} ${t('addenda').toLowerCase()}` : ''}</p></div>
+        <Badge status={c.status}>{t(c.status)}</Badge></Link></li>)}</ul></Card>}
+  </div>;
+}
+
+function Prescriptions({ patientId }: { patientId: string }) {
+  const { t } = useI18n(); const { can, org } = useWorkspace();
+  const { data, reload } = useLoad<any[]>(`/patients/${patientId}/prescriptions`);
+  const [open, setOpen] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const canWrite = can('prescription.create') && !!org.me.doctorMembershipId;
+  const show = async (id: string) => { try { setOpen(await get(`/prescriptions/${id}`)); } catch (e) { setErr(e); } };
+  return <div className="space-y-4">
+    {canWrite && <div className="flex justify-end"><Button onClick={async () => { try { setOpen(await newPrescription(patientId)); reload(); } catch (e) { setErr(e); } }}>+ {t('newPrescription')}</Button></div>}
+    <ErrorNote error={err} />
+    {!data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noPrescriptions')}</Empty> :
+      <Card><ul className="divide-y divide-line">{data.map((r) => <li key={r.id}><button onClick={() => show(r.id)} className="flex w-full flex-wrap items-center justify-between gap-2 py-2.5 text-start hover:bg-surface">
+        <div><p className="font-medium">{r.medications.join(', ') || '—'}</p><p className="text-xs text-muted tabular">{fmtDate(r.issued_at ?? r.created_at)} · {r.doctor_name}</p></div>
+        <Badge status={r.status === 'cancelled' ? 'cancelled' : r.status}>{r.status === 'cancelled' ? t('cancelledRx') : t(r.status)}</Badge></button></li>)}</ul></Card>}
+    <Dialog open={!!open} onClose={() => { setOpen(null); reload(); }} title={t('prescription')} wide>
+      {open && <PrescriptionEditor key={open.id + open.status} rx={open} onChange={(n) => { if (n === null) { setOpen(null); reload(); } else setOpen(n); }} />}
+    </Dialog>
+  </div>;
 }
 
 function LinkDoctor({ open, onClose, patient, onDone }: { open: boolean; onClose: () => void; patient: any; onDone: (p: any) => void }) {

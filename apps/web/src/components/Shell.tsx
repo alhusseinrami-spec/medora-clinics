@@ -85,7 +85,7 @@ export function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-export function PageTitle({ title, sub, actions }: { title: string; sub?: ReactNode; actions?: ReactNode }) {
+export function PageTitle({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   return <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">{title}</h1>{sub && <p className="mt-1 text-sm text-muted">{sub}</p>}</div>{actions && <div className="flex gap-2">{actions}</div>}</div>;
 }
 export function Forbidden() { const { t } = useI18n(); return <p className="text-muted">{t('noPermission')}</p>; }

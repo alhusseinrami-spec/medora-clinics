@@ -72,6 +72,7 @@ export function Stat({ label, value, tone = 'brand', sub }: { label: string; val
 const STATUS_TONE: Record<string, string> = {
   scheduled: 'bg-line text-ink', confirmed: 'bg-info/15 text-info', arrived: 'bg-accent/20 text-accent', waiting: 'bg-warning/15 text-warning',
   in_consultation: 'bg-brand/15 text-brand', completed: 'bg-success/15 text-success', cancelled: 'bg-danger/15 text-danger', no_show: 'bg-danger/15 text-danger',
+  draft: 'bg-warning/15 text-warning', signed: 'bg-success/15 text-success', issued: 'bg-success/15 text-success',
 };
 export function Badge({ children, status, className }: { children: ReactNode; status?: string; className?: string }) {
   return <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', status ? STATUS_TONE[status] : 'bg-brand-soft text-brand', className)}>{children}</span>;
