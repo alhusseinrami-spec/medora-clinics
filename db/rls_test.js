@@ -126,6 +126,45 @@ const APP = process.env.APP_DATABASE_URL || 'postgres://medora_app:medora_app_de
   await as(owner, center.org, q => q(`INSERT INTO membership_permissions(membership_id,permission_code,granted_by) VALUES($1,'clinical_notes.read',$2)`, [mAdmin, owner]));
   check('explicit clinical_notes.read grant lets the admin read notes', (await count(admin, center.org, `SELECT 1 FROM consultations`)) === 1);
 
+  // ---- Release 2: signed records, prescriptions, documents ----
+  const cons = await as(drA, center.org, async q => (await q(`SELECT id FROM consultations WHERE patient_id=$1`, [pA])).rows[0].id);
+  check("Dr C cannot write a consultation for a center patient from her own workspace", await fails(drC, solo.org, q => q(
+    `INSERT INTO consultations(organization_id,patient_id,doctor_membership_id,specialty_code) VALUES($1,$2,$3,'dermatology')`, [solo.org, pA, solo.mid])));
+  check("Dr B cannot write a consultation for Dr A's patient", await fails(drB, center.org, q => q(
+    `INSERT INTO consultations(patient_id,doctor_membership_id,specialty_code) VALUES($1,$2,'cardiology')`, [pA, mB])));
+  check('addendum on a draft consultation is refused', await fails(drA, center.org, q => q(
+    `INSERT INTO consultation_addenda(organization_id,consultation_id,author_membership_id,body) VALUES($1,$2,$3,'x')`, [center.org, cons, mA])));
+  await as(drA, center.org, q => q(`INSERT INTO diagnoses(consultation_id,description) VALUES($1,'Acute otitis media')`, [cons]));
+  await as(drA, center.org, q => q(`UPDATE consultations SET status='signed', signed_at=now(), signed_by=$2 WHERE id=$1`, [cons, drA]));
+  check('signed consultation cannot be edited', await fails(drA, center.org, q => q(`UPDATE consultations SET clinical_notes='changed' WHERE id=$1`, [cons])));
+  await fails(drA, center.org, q => q(`DELETE FROM consultations WHERE id=$1`, [cons]));
+  check('signed consultation cannot be deleted', (await count(drA, center.org, `SELECT 1 FROM consultations WHERE id=$1`, [cons])) === 1);
+  check('diagnoses of a signed consultation are frozen', await fails(drA, center.org, q => q(`INSERT INTO diagnoses(consultation_id,description) VALUES($1,'late')`, [cons])));
+  await as(drA, center.org, q => q(`INSERT INTO consultation_addenda(organization_id,consultation_id,author_membership_id,body) VALUES($1,$2,$3,'Correction')`, [center.org, cons, mA]));
+  check('addenda are append-only', await fails(drA, center.org, q => q(`UPDATE consultation_addenda SET body='x'`)));
+  check('Dr B cannot read the addendum', (await count(drB, center.org, `SELECT 1 FROM consultation_addenda`)) === 0);
+
+  const rx = await as(drA, center.org, async q => (await q(`INSERT INTO prescriptions(patient_id,prescribed_by,consultation_id) VALUES($1,$2,$3) RETURNING id`, [pA, mA, cons])).rows[0].id);
+  await as(drA, center.org, q => q(`INSERT INTO prescription_items(prescription_id,medication_name,dosage) VALUES($1,'Amoxicillin 250 mg/5 ml','5 ml')`, [rx]));
+  await as(drA, center.org, q => q(`UPDATE prescriptions SET status='issued', issued_at=now() WHERE id=$1`, [rx]));
+  check('issued prescription items are frozen', await fails(drA, center.org, q => q(`UPDATE prescription_items SET dosage='10 ml' WHERE prescription_id=$1`, [rx])));
+  check('issued prescription cannot go back to draft', await fails(drA, center.org, q => q(`UPDATE prescriptions SET status='draft', issued_at=null WHERE id=$1`, [rx])));
+  check('center admin cannot read prescriptions without the permission', (await count(admin, center.org, `SELECT 1 FROM prescriptions`)) === 0);
+  check('Dr C sees no center prescriptions', (await count(drC, solo.org, `SELECT 1 FROM prescriptions`)) === 0);
+  check('shared medication catalog cannot be edited by the app', await fails(drA, center.org, q => q(`UPDATE medications SET name='x'`)));
+  check('assistant cannot add medications to the catalog', await fails(asst, center.org, q => q(
+    `INSERT INTO medications(organization_id,name,created_by) VALUES($1,'Custom',$2)`, [center.org, asst])));
+  await as(drC, solo.org, q => q(`INSERT INTO medications(organization_id,name,created_by) VALUES($1,'Clinic compound cream',$2)`, [solo.org, drC]));
+  check("a workspace's own medication is invisible elsewhere", (await count(drA, center.org, `SELECT 1 FROM medications WHERE name='Clinic compound cream'`)) === 0);
+
+  await as(asst, center.org, q => q(`INSERT INTO medical_documents(patient_id,uploaded_by,kind,storage_key,title) VALUES($1,$2,'lab_result','k1','CBC')`, [pA, asst]));
+  await as(drA, center.org, q => q(`INSERT INTO medical_documents(patient_id,uploaded_by,kind,storage_key,title) VALUES($1,$2,'imaging','k2','X-ray')`, [pA, drA]));
+  check('assistant sees only the document they uploaded', (await count(asst, center.org, `SELECT 1 FROM medical_documents`)) === 1);
+  check('treating doctor sees both documents', (await count(drA, center.org, `SELECT 1 FROM medical_documents`)) === 2);
+  check("Dr B cannot see Dr A's patient documents", (await count(drB, center.org, `SELECT 1 FROM medical_documents`)) === 0);
+  check('documents cannot be hard-deleted', await fails(drA, center.org, q => q(`DELETE FROM medical_documents`)));
+  check('stored file of a document cannot be swapped', await fails(drA, center.org, q => q(`UPDATE medical_documents SET storage_key='other' WHERE title='X-ray'`)));
+
   // ---- Waiting room and notifications ----
   await as(asst, center.org, q => q(`UPDATE appointments SET status='arrived' WHERE id=$1`, [appt]));
   check('doctor sees arrival in waiting room', (await count(drA, center.org, `SELECT 1 FROM waiting_room`)) === 1);

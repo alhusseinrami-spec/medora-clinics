@@ -13,6 +13,16 @@ function mfaKey(): Buffer {
   return createHash('sha256').update('medora-development-only-key').digest();
 }
 
+function fileKey(): Buffer {
+  if (env.FILE_ENC_KEY) {
+    const k = Buffer.from(env.FILE_ENC_KEY, 'hex');
+    if (k.length !== 32) throw new Error('FILE_ENC_KEY must be 64 hex characters');
+    return k;
+  }
+  if (isProd) throw new Error('FILE_ENC_KEY is required in production');
+  return createHash('sha256').update('medora-development-only-file-key').digest();
+}
+
 export const config = {
   env: env.NODE_ENV ?? 'development',
   isProd,
@@ -24,5 +34,10 @@ export const config = {
   cookieSecure: isProd || env.COOKIE_SECURE === 'true',
   mfaKey: mfaKey(),
   emailProviderConfigured: Boolean(env.EMAIL_PROVIDER_API_KEY),
+  fileKey: fileKey(),
+  /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
+  storageDir: env.STORAGE_DIR ?? new URL('../../storage/', import.meta.url).pathname,
+  s3Configured: Boolean(env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY),
+  maxUploadBytes: 15 * 1024 * 1024,
 };
 export type Config = typeof config;
