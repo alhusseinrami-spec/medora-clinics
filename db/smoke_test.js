@@ -37,10 +37,11 @@ const url = process.env.DATABASE_URL || 'postgres://medora:medora_dev@localhost:
   await c.query(`INSERT INTO exchange_rates(organization_id,lbp_per_usd,effective_from) VALUES($1,89500,now()-interval '1 day')`, [solo.id]);
   const inv1 = await one(`INSERT INTO invoices(organization_id,patient_id,currency,lbp_per_usd) VALUES($1,$2,'USD',NULL) RETURNING invoice_number,lbp_per_usd`, [solo.id, p.id]);
   await c.query(`INSERT INTO exchange_rates(organization_id,lbp_per_usd) VALUES($1,90000)`, [solo.id]);
-  const inv2 = await one(`INSERT INTO invoices(organization_id,patient_id,currency,lbp_per_usd) VALUES($1,$2,'USD',NULL) RETURNING id,invoice_number,lbp_per_usd`, [solo.id, p.id]);
+  const draft = await one(`INSERT INTO invoices(organization_id,patient_id,currency,lbp_per_usd,status) VALUES($1,$2,'USD',NULL,'draft') RETURNING id`, [solo.id, p.id]);
+  await c.query(`INSERT INTO invoice_items(invoice_id,description,unit_price) VALUES($1,'Consultation',50)`, [draft.id]);
+  const inv2 = await one(`UPDATE invoices SET status='issued' WHERE id=$1 RETURNING id,invoice_number,lbp_per_usd`, [draft.id]);
   const old = await one(`SELECT lbp_per_usd FROM invoices WHERE invoice_number=1 AND organization_id=$1`, [solo.id]);
   checks.push([inv1.invoice_number === 1 && inv2.invoice_number === 2 && +old.lbp_per_usd === 89500 && +inv2.lbp_per_usd === 90000 ? 'ok' : 'FAIL', 'invoice numbering and frozen exchange rate']);
-  await c.query(`INSERT INTO invoice_items(invoice_id,description,unit_price) VALUES($1,'Consultation',50)`, [inv2.id]);
   await c.query(`INSERT INTO payments(invoice_id,method_code,amount,currency,lbp_per_usd) VALUES($1,'cash',20,'USD',90000),($1,'whish',900000,'LBP',90000)`, [inv2.id]);
   const bal = await one(`SELECT total, paid FROM invoice_balances WHERE invoice_id=$1`, [inv2.id]);
   checks.push([+bal.total === 50 && +bal.paid === 30 ? 'ok' : 'FAIL', 'partial USD + LBP payments give correct balance']);

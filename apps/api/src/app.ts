@@ -15,10 +15,11 @@ import { SpecialtyModule } from './specialty/specialty.controller.js';
 import { PatientsModule } from './patients/patients.controller.js';
 import { SchedulingModule } from './scheduling/scheduling.controller.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
+import { FinanceModule } from './finance/finance.module.js';
 import { attachRealtime } from './realtime/realtime.js';
 
 @Module({
-  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule],
+  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },

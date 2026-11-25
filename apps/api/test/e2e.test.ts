@@ -450,6 +450,109 @@ test('account recovery: reset link works once and signs out other sessions', asy
   assert.equal((await c.post('/auth/login', { email: 'karim@synthetic.medora', password: 'New-Synthetic-Pass-1' })).status, 200);
 });
 
+// ---------------- Release 3: finance and insurance ----------------
+test('invoices: exchange rate required, from a visit, draft, issue, frozen, numbering', async () => {
+  const centerDr = drC();
+  assert.equal((await centerDr.post('/finance/rates', { lbpPerUsd: 1, note: null })).status, 403, 'a center doctor cannot set the center rate');
+  dr.org = ids.drPractice;   // Dr Nour's own practice from here on
+  const pr = await dr.post('/patients', { fullName: 'Synthetic Finance Patient', phone: '+961 71 555 001', confirmNotDuplicate: true });
+  assert.equal(pr.status, 201, JSON.stringify(pr.body)); ids.finPatient = pr.body.id;
+  const noRate = await dr.post('/invoices', { patientId: ids.finPatient, items: [{ description: 'Consultation', unitPrice: 50, serviceId: null }] });
+  assert.equal(noRate.status, 400); assert.match(noRate.body.message, /exchange rate/);
+  assert.equal((await asst.post('/finance/rates', { lbpPerUsd: 1, note: null })).status, 403);
+  const rate = await dr.post('/finance/rates', { lbpPerUsd: 90000, note: 'Synthetic market rate' });
+  assert.equal(rate.status, 201, JSON.stringify(rate.body));
+  assert.equal((await dr.get('/finance/rates')).body.current, 90000);
+  const w = await dr.post('/appointments/walk-in', { patientId: ids.finPatient, doctorMembershipId: ids.drSoloMid });
+  assert.equal(w.status, 201, JSON.stringify(w.body));
+  const fromVisit = await dr.post('/invoices', { appointmentId: w.body.id });
+  assert.equal(fromVisit.status, 201, JSON.stringify(fromVisit.body));
+  assert.equal(fromVisit.body.status, 'draft'); assert.equal(fromVisit.body.items.length, 1); assert.equal(fromVisit.body.items[0].unit_price, 50);
+  assert.equal((await dr.post('/invoices', { appointmentId: w.body.id })).body.code, 'already_invoiced');
+  const edit = await dr.patch(`/invoices/${fromVisit.body.id}`, { items: [{ description: 'Consultation', unitPrice: 50, kind: 'consultation', serviceId: null }, { description: 'Ear cleaning', unitPrice: 30, kind: 'service', serviceId: null }], discount: 10, notes: null });
+  assert.equal(edit.status, 200); assert.equal(edit.body.total, 70);
+  const iss = await dr.post(`/invoices/${fromVisit.body.id}/issue`);
+  assert.equal(iss.status, 201); assert.equal(iss.body.invoice_number, 1); assert.equal(iss.body.lbp_per_usd, 90000);
+  ids.inv = iss.body.id;
+  const locked = await dr.patch(`/invoices/${ids.inv}`, { discount: 0 });
+  assert.equal(locked.status, 409); assert.equal(locked.body.code, 'record_locked');
+  assert.equal((await dr.req('DELETE', `/invoices/${ids.inv}`)).status, 409);
+  const d2 = await dr.post('/invoices', { patientId: ids.finPatient, items: [], notes: null });
+  assert.equal((await dr.post(`/invoices/${d2.body.id}/issue`)).status, 400, 'empty invoice cannot be issued');
+  assert.equal((await dr.req('DELETE', `/invoices/${d2.body.id}`)).status, 200, 'drafts can be deleted, no number used');
+});
+
+test('payments in USD and LBP, receipts, overpayment, refunds, credit notes, void', async () => {
+  const usd = await dr.post(`/invoices/${ids.inv}/payments`, { method: 'cash', amount: 20, currency: 'USD', reference: null, note: null });
+  assert.equal(usd.status, 201, JSON.stringify(usd.body)); assert.equal(usd.body.receipt.receiptNumber, 1);
+  const lbp = await dr.post(`/invoices/${ids.inv}/payments`, { method: 'whish', amount: 900000, currency: 'LBP', reference: 'WH-SYN-1', note: null });
+  assert.equal(lbp.body.paid, 30); assert.equal(lbp.body.balance, 40);
+  assert.equal((await dr.post(`/invoices/${ids.inv}/payments`, { method: 'cash', amount: 1000, currency: 'USD', reference: null, note: null })).status, 400, 'no overpayment');
+  const receipt = await dr.get(`/payments/${usd.body.receipt.id}`);
+  assert.equal(receipt.body.receipt_number, 1); assert.equal(receipt.body.invoice.invoice_number, 1);
+  const ref = await dr.post(`/payments/${usd.body.receipt.id}/refund`, { amount: 5, reason: 'Synthetic overcharge' });
+  assert.equal(ref.status, 201, JSON.stringify(ref.body)); assert.equal(ref.body.paid, 25);
+  assert.equal((await dr.post(`/payments/${usd.body.receipt.id}/refund`, { amount: 50, reason: 'Too much' })).status, 400);
+  const cn = await dr.post(`/invoices/${ids.inv}/credit-notes`, { amount: 10, reason: 'Courtesy discount' });
+  assert.equal(cn.status, 201); assert.equal(cn.body.credited, 10); assert.equal(cn.body.balance, 35); assert.equal(cn.body.creditNotes[0].invoice_number, 1);
+  assert.equal((await dr.post(`/invoices/${ids.inv}/credit-notes`, { amount: 500, reason: 'Too much' })).status, 400);
+  assert.equal((await dr.post(`/invoices/${ids.inv}/void`, { reason: 'Mistake' })).status, 409, 'paid invoice cannot be voided');
+  const other = await dr.post('/invoices', { patientId: ids.finPatient, currency: 'LBP', items: [{ description: 'Dressing', unitPrice: 450000, serviceId: null }], notes: null, issue: true });
+  assert.equal(other.body.invoice_number, 2); assert.equal(other.body.currency, 'LBP');
+  const v = await dr.post(`/invoices/${other.body.id}/void`, { reason: 'Wrong patient' });
+  assert.equal(v.body.status, 'void'); assert.equal(v.body.invoice_number, 2, 'number stays used');
+  const unpaid = await dr.get('/invoices?unpaid=1');
+  assert.deepEqual(unpaid.body.map((i: any) => i.id), [ids.inv]);
+  assert.equal((await owner.get(`/invoices/${ids.inv}`)).status, 404, 'another workspace cannot see it');
+  assert.equal((await stranger.req('GET', `/invoices/${ids.inv}`, undefined, { org: ids.drPractice })).status, 403);
+});
+
+test('insurance: directory, policy, claim from covered lines, decision, reimbursement', async () => {
+  const dir = await dr.get('/insurance/providers');
+  assert.ok(dir.body.some((p: any) => p.platform && p.kind === 'nssf'));
+  const prov = await dr.post('/insurance/providers', { name: 'Synthetic Mutual Insurance', kind: 'private', phone: null, email: null, notes: null });
+  assert.equal(prov.status, 201);
+  const nssf = dir.body.find((p: any) => p.platform);
+  assert.equal((await dr.patch(`/insurance/providers/${nssf.id}`, { notes: 'x' })).status, 404, 'platform directory is read-only');
+  const pol = await dr.post(`/patients/${ids.finPatient}/policies`, { providerId: prov.body.id, policyNumber: 'SYN-POL-1', coveragePercent: 80, memberName: null, relationship: null,
+    annualCeiling: null, coveredServices: 'Consultations, procedures', nonCoveredServices: 'Cosmetic', notes: null, validFrom: null, validUntil: null, cardDocumentId: null });
+  assert.equal(pol.status, 201, JSON.stringify(pol.body));
+  const inv = await dr.post('/invoices', { patientId: ids.finPatient, items: [{ description: 'Minor procedure', unitPrice: 100, kind: 'service', insuranceCovered: true, serviceId: null }, { description: 'Cosmetic add-on', unitPrice: 20, insuranceCovered: false, serviceId: null }], notes: null, issue: true });
+  const claim = await dr.post('/claims', { invoiceId: inv.body.id, policyId: pol.body.id, notes: null });
+  assert.equal(claim.status, 201, JSON.stringify(claim.body)); assert.equal(claim.body.amount_claimed, 80, '80% of the covered line');
+  assert.equal((await dr.post(`/claims/${claim.body.id}/reimburse`, { amount: 80, currency: 'USD', reference: null })).status, 409, 'needs approval first');
+  assert.equal((await dr.post(`/claims/${claim.body.id}/submit`, { claimNumber: 'INS-SYN-77' })).body.status, 'submitted');
+  assert.equal((await dr.post(`/claims/${claim.body.id}/decision`, { status: 'partially_approved', amountApproved: 90, reason: null, claimNumber: null })).status, 400);
+  const dec = await dr.post(`/claims/${claim.body.id}/decision`, { status: 'partially_approved', amountApproved: 60, reason: null, claimNumber: null });
+  assert.equal(dec.body.amount_approved, 60);
+  const re = await dr.post(`/claims/${claim.body.id}/reimburse`, { amount: 60, currency: 'USD', reference: 'TRF-SYN-9' });
+  assert.equal(re.status, 201, JSON.stringify(re.body)); assert.equal(re.body.status, 'reimbursed');
+  const after = await dr.get(`/invoices/${inv.body.id}`);
+  assert.equal(after.body.paid, 60); assert.equal(after.body.balance, 60, 'patient owes the rest');
+  assert.equal(after.body.payments[0].method_code, 'insurance');
+  assert.equal((await dr.get('/claims?status=reimbursed')).body.length, 1);
+  ids.insInvoice = inv.body.id;
+});
+
+test('expenses, commissions and the financial overview follow permissions', async () => {
+  assert.equal((await dr.post('/finance/expenses', { category: 'supplies', description: 'Synthetic gloves', amount: 15, currency: 'USD', method: 'cash', doctorMembershipId: null, departmentId: null })).status, 201);
+  assert.equal((await dr.post('/finance/expenses', { category: 'utilities', description: 'Generator', amount: 450000, currency: 'LBP', method: 'cash', doctorMembershipId: null, departmentId: null })).status, 201);
+  const today = new Date().toISOString().slice(0, 10);
+  const s = await dr.get(`/finance/summary?from=${today}&to=${today}`);
+  assert.equal(s.status, 200, JSON.stringify(s.body));
+  // Received: 20 + 10 (LBP) - 5 refund from the patient, 60 from insurance. Expenses: 15 + 5.
+  assert.equal(s.body.received.patients, 25); assert.equal(s.body.received.insurance, 60); assert.equal(s.body.received.refunds, 5);
+  assert.equal(s.body.received.cashLbp, 900000);
+  assert.equal(s.body.expenses.total, 20); assert.equal(s.body.net, 65);
+  assert.equal(s.body.invoiced, 190); assert.equal(s.body.credited, 10);
+  assert.equal(s.body.outstanding.amount, 95); assert.equal(s.body.outstanding.invoices, 2);
+  assert.equal(s.body.revenueByKind.consultation, 50);
+  // Center: commissions are set by management only and frozen on invoices.
+  assert.equal((await dr.req('PUT', `/finance/commissions/${ids.drCenterMid}`, { doctorPercent: 100 }, { org: ids.center })).status, 403);
+  assert.equal((await asst.get(`/finance/summary?from=${today}&to=${today}`)).status, 403, 'assistant has no finance permission');
+  assert.equal((await owner.get(`/finance/summary?from=${today}&to=${today}`)).body.received.total, 0, 'center sees none of the private practice');
+});
+
 test('shared role defaults match the database', async () => {
   const { ROLE_DEFAULTS } = await import('@medora/shared');
   const pg = require('pg');

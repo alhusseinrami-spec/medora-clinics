@@ -165,6 +165,64 @@ const APP = process.env.APP_DATABASE_URL || 'postgres://medora_app:medora_app_de
   check('documents cannot be hard-deleted', await fails(drA, center.org, q => q(`DELETE FROM medical_documents`)));
   check('stored file of a document cannot be swapped', await fails(drA, center.org, q => q(`UPDATE medical_documents SET storage_key='other' WHERE title='X-ray'`)));
 
+  // ---- Release 3: finance and insurance ----
+  const acct = await signup('acct@test.medora', 'Center Accountant');
+  await accept(acct, await invite('acct@test.medora', 'accountant'));
+  check('a doctor cannot set the exchange rate of the center', await fails(drA, center.org, q => q(`INSERT INTO exchange_rates(organization_id,lbp_per_usd) VALUES($1,1)`, [center.org])));
+  await as(owner, center.org, q => q(`INSERT INTO exchange_rates(organization_id,lbp_per_usd,created_by) VALUES($1,89500,$2)`, [center.org, owner]));
+  check('exchange rate history cannot be rewritten', await fails(owner, center.org, q => q(`UPDATE exchange_rates SET lbp_per_usd=1`)));
+  await as(owner, center.org, q => q(`INSERT INTO commission_rules(membership_id,doctor_percent,updated_by) VALUES($1,60,$2)`, [mA, owner]));
+  await fails(drA, center.org, q => q(`UPDATE commission_rules SET doctor_percent=100 WHERE membership_id=$1`, [mA]));
+  check('a doctor cannot change their own commission', (await count(owner, center.org, `SELECT 1 FROM commission_rules WHERE doctor_percent=60`)) === 1);
+  const inv = await as(drA, center.org, async q => {
+    const i = (await q(`INSERT INTO invoices(organization_id,patient_id,doctor_membership_id,currency,status,created_by) VALUES($1,$2,$3,'USD','draft',$4) RETURNING id`, [center.org, pA, mA, drA])).rows[0].id;
+    await q(`INSERT INTO invoice_items(invoice_id,description,unit_price,kind,insurance_covered) VALUES($1,'Consultation',50,'consultation',true)`, [i]);
+    return (await q(`UPDATE invoices SET status='issued' WHERE id=$1 RETURNING id, invoice_number, doctor_percent`, [i])).rows[0];
+  });
+  check('issuing numbers the invoice and freezes the commission', inv.invoice_number === 1 && +inv.doctor_percent === 60);
+  check('issued invoice lines are frozen', await fails(drA, center.org, q => q(`INSERT INTO invoice_items(invoice_id,description,unit_price) VALUES($1,'Extra',10)`, [inv.id])));
+  check('issued invoice amounts are frozen', await fails(drA, center.org, q => q(`UPDATE invoices SET discount=10 WHERE id=$1`, [inv.id])));
+  check("Dr B cannot see Dr A's invoice", (await count(drB, center.org, `SELECT 1 FROM invoices`)) === 0);
+  check('the accountant sees every center invoice', (await count(acct, center.org, `SELECT 1 FROM invoices`)) === 1);
+  check('Dr C sees no center invoice', (await count(drC, solo.org, `SELECT 1 FROM invoices WHERE organization_id=$1`, [center.org])) === 0);
+  check("Dr B cannot bill Dr A's patient", await fails(drB, center.org, q => q(
+    `INSERT INTO invoices(organization_id,patient_id,doctor_membership_id,currency,status) VALUES($1,$2,$3,'USD','draft')`, [center.org, pA, mB])));
+  check('an assistant without the payment permission cannot take payments', await fails(asst, center.org, q => q(
+    `INSERT INTO payments(invoice_id,method_code,amount,currency,received_by) VALUES($1,'cash',10,'USD',$2)`, [inv.id, asst])));
+  const pay = await as(drA, center.org, async q => (await q(`INSERT INTO payments(invoice_id,method_code,amount,currency,received_by) VALUES($1,'cash',20,'USD',$2) RETURNING id, receipt_number`, [inv.id, drA])).rows[0]);
+  check('payments get a receipt number', pay.receipt_number === 1);
+  check('payments cannot be edited', await fails(drA, center.org, q => q(`UPDATE payments SET amount=1`)));
+  check('payments cannot be deleted', await fails(drA, center.org, q => q(`DELETE FROM payments`)));
+  check('an invoice with payments cannot be voided', await fails(drA, center.org, q => q(`UPDATE invoices SET status='void', voided_at=now(), void_reason='x' WHERE id=$1`, [inv.id])));
+  check('a payment cannot be recorded for another workspace', await fails(drC, solo.org, q => q(
+    `INSERT INTO payments(organization_id,invoice_id,method_code,amount,currency,received_by) VALUES($1,$2,'cash',5,'USD',$3)`, [solo.org, inv.id, drC])));
+  await as(acct, center.org, q => q(`INSERT INTO payments(invoice_id,method_code,amount,currency,received_by,refund_of) VALUES($1,'cash',-5,'USD',$2,$3)`, [inv.id, acct, pay.id]));
+  const bal = await as(drA, center.org, async q => (await q(`SELECT total, paid FROM invoice_balances WHERE invoice_id=$1`, [inv.id])).rows[0]);
+  check('refund reduces the amount paid', +bal.total === 50 && +bal.paid === 15);
+
+  await as(drA, center.org, q => q(`INSERT INTO expenses(organization_id,membership_id,category,amount,currency,created_by) VALUES($1,$2,'supplies',30,'USD',$3)`, [center.org, mA, drA]));
+  await as(acct, center.org, q => q(`INSERT INTO expenses(organization_id,category,amount,currency,created_by) VALUES($1,'rent',1000,'USD',$2)`, [center.org, acct]));
+  check("a doctor sees only their own expenses", (await count(drA, center.org, `SELECT 1 FROM expenses`)) === 1);
+  check("Dr B sees none of Dr A's expenses", (await count(drB, center.org, `SELECT 1 FROM expenses`)) === 0);
+  check('the accountant sees all center expenses', (await count(acct, center.org, `SELECT 1 FROM expenses`)) === 2);
+  check('a doctor cannot record a shared center expense', await fails(drA, center.org, q => q(
+    `INSERT INTO expenses(organization_id,category,amount,currency,created_by) VALUES($1,'rent',5,'USD',$2)`, [center.org, drA])));
+  check('expenses are never hard-deleted', await fails(acct, center.org, q => q(`DELETE FROM expenses`)));
+
+  const prov = await as(drA, center.org, async q => (await q(`INSERT INTO insurance_providers(organization_id,name,kind) VALUES($1,'Synthetic Assurance','private') RETURNING id`, [center.org])).rows[0].id);
+  await fails(drA, center.org, q => q(`UPDATE insurance_providers SET name='x' WHERE organization_id IS NULL`));
+  check('the platform directory cannot be edited by a workspace', (await count(drA, center.org, `SELECT 1 FROM insurance_providers WHERE organization_id IS NULL AND name LIKE 'NSSF%'`)) === 1);
+  check("another workspace's insurer is invisible", (await count(drC, solo.org, `SELECT 1 FROM insurance_providers WHERE id=$1`, [prov])) === 0);
+  const pol = await as(drA, center.org, async q => (await q(`INSERT INTO insurance_policies(patient_id,provider_id,policy_number,coverage_percent,created_by) VALUES($1,$2,'SYN-1',80,$3) RETURNING id`, [pA, prov, drA])).rows[0].id);
+  check("Dr B cannot see Dr A's patient's policy", (await count(drB, center.org, `SELECT 1 FROM insurance_policies`)) === 0);
+  check('an assistant cannot prepare an insurance claim', await fails(asst, center.org, q => q(
+    `INSERT INTO claims(organization_id,invoice_id,policy_id,amount_claimed,created_by) VALUES($1,$2,$3,40,$4)`, [center.org, inv.id, pol, asst])));
+  const claim = await as(drA, center.org, async q => (await q(`INSERT INTO claims(organization_id,invoice_id,policy_id,amount_claimed,created_by) VALUES($1,$2,$3,40,$4) RETURNING id`, [center.org, inv.id, pol, drA])).rows[0].id);
+  check('a claim cannot jump from draft to reimbursed', await fails(drA, center.org, q => q(`UPDATE claims SET status='reimbursed' WHERE id=$1`, [claim])));
+  await as(drA, center.org, q => q(`UPDATE claims SET status='submitted', submitted_at=now() WHERE id=$1`, [claim]));
+  check('the claimed amount is fixed once submitted', await fails(drA, center.org, q => q(`UPDATE claims SET amount_claimed=45 WHERE id=$1`, [claim])));
+  check('Dr C cannot see center claims', (await count(drC, solo.org, `SELECT 1 FROM claims`)) === 0);
+
   // ---- Waiting room and notifications ----
   await as(asst, center.org, q => q(`UPDATE appointments SET status='arrived' WHERE id=$1`, [appt]));
   check('doctor sees arrival in waiting room', (await count(drA, center.org, `SELECT 1 FROM waiting_room`)) === 1);
