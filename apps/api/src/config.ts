@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const env = process.env;
 const isProd = env.NODE_ENV === 'production';
@@ -42,7 +43,7 @@ export const config = {
   get demoMode() { return env.DEMO_MODE === 'true'; },
   fileKey: fileKey(),
   /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
-  storageDir: env.STORAGE_DIR ?? new URL('../../storage/', import.meta.url).pathname,
+  storageDir: env.STORAGE_DIR ?? fileURLToPath(new URL('../../storage/', import.meta.url)),
   s3Configured: Boolean(env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY),
   maxUploadBytes: 15 * 1024 * 1024,
 };

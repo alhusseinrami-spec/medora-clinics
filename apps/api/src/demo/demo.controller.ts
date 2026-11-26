@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { ConflictException, Controller, Get, HttpCode, Module, NotFoundException, Post, Body, Req, Res, ServiceUnavailableException } from '@nestjs/common';
 import type { Response } from 'express';
 import { execFile } from 'node:child_process';
@@ -74,11 +75,11 @@ export class DemoController {
         if (real > 0) throw new ConflictException('This database holds accounts outside the demo, so it will not be reset');
       } finally { await pg.end(); }
       if (Date.now() - lastReset < RESET_COOLDOWN_MS) throw new ConflictException('The demo was reset a moment ago');
-      const { migrate } = require(new URL('db/migrate.js', ROOT).pathname);
-      const { syncPresets } = require(new URL('db/sync_presets.js', ROOT).pathname);
+      const { migrate } = require(fileURLToPath(new URL('db/migrate.js', ROOT)));
+      const { syncPresets } = require(fileURLToPath(new URL('db/sync_presets.js', ROOT)));
       await migrate({ reset: true, log: () => {} });
       await syncPresets({ log: () => {} });
-      const seed = new URL('db/seed_synthetic.mjs', ROOT).pathname;
+      const seed = fileURLToPath(new URL('db/seed_synthetic.mjs', ROOT));
       if (!existsSync(seed)) throw new ServiceUnavailableException('The demo data script is missing on this server');
       const port = req.socket.localPort;
       await new Promise<void>((resolve, reject) => execFile(process.execPath, [seed], {

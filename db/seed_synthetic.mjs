@@ -135,7 +135,8 @@ await patientUser.post('/portal/requests', { patientId: pa[0].id, doctorMembersh
 // A public demo server (DEMO_MODE) resets itself with SEED_SKIP_ADMIN=1: it has no platform administrator.
 if (process.env.SEED_SKIP_ADMIN !== '1') {
   const { execFileSync } = await import('node:child_process');
-  execFileSync(process.execPath, [new URL('./platform_admin.js', import.meta.url).pathname, 'create', 'admin@demo.medora', 'MEDORA Admin'], { env: { ...process.env, ADMIN_PASSWORD: PW }, stdio: 'ignore' });
+  const { fileURLToPath } = await import('node:url');
+  execFileSync(process.execPath, [fileURLToPath(new URL('./platform_admin.js', import.meta.url)), 'create', 'admin@demo.medora', 'MEDORA Admin'], { env: { ...process.env, ADMIN_PASSWORD: PW }, stdio: 'ignore' });
   const admin = new C(); await admin.post('/auth/login', { email: 'admin@demo.medora', password: PW });
   await admin.post(`/admin/workspaces/${center.organizationId}/payments`, { amount: 1490, currency: 'USD', method: 'bank_transfer', reference: 'SYN-DEMO-0001', months: 12 });
 }
