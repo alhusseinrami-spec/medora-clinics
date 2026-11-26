@@ -1,6 +1,7 @@
 // Platform presets for the specialty engine: the patient profile sections each specialty starts with,
 // plus the dashboard widgets it shows. Synced into clinical_templates by db/sync_presets.js.
 import type { Field, Section, TemplateSchema, Label } from './templates.js';
+import { PRENATAL_SCHEDULE } from './clinical.js';
 
 const L = (en: string, fr: string, ar: string): Label => ({ en, fr, ar });
 const t = (key: string, en: string, o: Partial<Field> = {}): Field => ({ key, type: 'text', label: en, optional: true, ...o });
@@ -75,11 +76,15 @@ export const PRESETS: Preset[] = [
       n('menarche_age', 'Age at menarche', 'years', 7, 20), n('cycle_length_days', 'Cycle length', 'days', 15, 90),
       n('period_length_days', 'Period length', 'days', 1, 15), sel('regularity', 'Regularity', ['regular', 'irregular']), b('dysmenorrhea', 'Dysmenorrhea'),
     ] },
-    { key: 'pregnancy', label: L('Current pregnancy', 'Grossesse actuelle', 'الحمل الحالي'), widget: 'pregnancy_tracker', fields: [
+    { key: 'pregnancy', label: L('Current pregnancy', 'Grossesse actuelle', 'الحمل الحالي'), widget: 'pregnancy_tracker', chart: { rows: 'prenatal_visits', series: ['weight_kg', 'systolic', 'diastolic', 'fundal_height_cm'] }, fields: [
       b('pregnant', 'Currently pregnant'), d('lmp', 'Last menstrual period'), comp('edd', 'Estimated delivery date', 'edd'),
       comp('gestational_age', 'Gestational age', 'gestational_age'), sel('risk', 'Risk level', ['low', 'moderate', 'high']),
+      b('rh_negative', 'Rh negative'), b('multiple', 'Multiple pregnancy (twins or more)'), b('gestational_diabetes', 'Gestational diabetes'),
+      comp('risk_flags', 'Risk flags', 'pregnancy_risk'),
       rep('prenatal_visits', 'Prenatal visits', [d('date', 'Date', { required: true }), n('weight_kg', 'Weight', 'kg', 30, 200),
-        n('systolic', 'Systolic BP', 'mmHg', 60, 220), n('fundal_height_cm', 'Fundal height', 'cm', 5, 50), t('notes', 'Notes')]),
+        n('systolic', 'Systolic BP', 'mmHg', 60, 220), n('diastolic', 'Diastolic BP', 'mmHg', 30, 140), n('fundal_height_cm', 'Fundal height', 'cm', 5, 50),
+        n('fetal_heart_rate', 'Fetal heart rate', 'bpm', 60, 220), t('notes', 'Notes')]),
+      rep('tests_done', 'Prenatal tests and vaccines done', [sel('test', 'Test', PRENATAL_SCHEDULE.map((i) => i.key), { required: true }), d('date', 'Date'), t('result', 'Result')]),
     ] },
     { key: 'obstetric', label: L('Obstetric history', 'Antécédents obstétricaux', 'التاريخ التوليدي'), fields: [
       n('gravida', 'Gravida', '', 0, 30), n('para', 'Para', '', 0, 30), n('abortions', 'Abortions / miscarriages', '', 0, 30),
@@ -88,9 +93,9 @@ export const PRESETS: Preset[] = [
     ] },
     { key: 'gynecology', label: L('Gynecological history', 'Antécédents gynécologiques', 'التاريخ النسائي'), fields: [
       sel('contraception', 'Contraception', ['none', 'pill', 'iud', 'implant', 'condom', 'injection', 'other']),
-      d('last_pap_smear', 'Last Pap smear'), ta('gyn_conditions', 'Gynecological conditions'),
+      d('last_pap_smear', 'Last Pap smear'), comp('next_pap', 'Next Pap smear (3-year interval)', 'next_pap'), ta('gyn_conditions', 'Gynecological conditions'),
     ] },
-  ], [...COMMON_WIDGETS, 'pregnancies_due', 'prenatal_followups']),
+  ], [...COMMON_WIDGETS, 'pregnancies_due', 'prenatal_followups', 'pap_recalls']),
 
   ...profile('orthopedics', 'Orthopedic profile', [
     { key: 'musculoskeletal', label: L('Musculoskeletal history', 'Antécédents musculo-squelettiques', 'التاريخ العضلي الهيكلي'), widget: 'body_map', fields: [
@@ -135,17 +140,68 @@ export const PRESETS: Preset[] = [
 
   ...profile('cardiology', 'Cardiology profile', [
     VITALS,
+    { key: 'bp_log', label: L('Blood pressure and heart rate log', 'Suivi tension et fréquence cardiaque', 'سجل ضغط الدم ونبض القلب'), widget: 'trend',
+      chart: { rows: 'readings', series: ['systolic', 'diastolic', 'heart_rate', 'weight_kg'] }, fields: [
+      rep('readings', 'Readings', [d('date', 'Date', { required: true }), n('systolic', 'Systolic BP', 'mmHg', 50, 260), n('diastolic', 'Diastolic BP', 'mmHg', 30, 160),
+        n('heart_rate', 'Heart rate', 'bpm', 20, 250), n('weight_kg', 'Weight', 'kg', 2, 400), sel('setting', 'Where', ['clinic', 'home'])]),
+    ] },
     { key: 'cardio_history', label: L('Cardiovascular history', 'Antécédents cardiovasculaires', 'التاريخ القلبي الوعائي'), fields: [
       multi('risk_factors', 'Risk factors', ['hypertension', 'diabetes', 'dyslipidemia', 'smoking', 'obesity', 'family_history', 'ckd']),
       ta('conditions', 'Cardiac conditions'), ta('procedures', 'Procedures (stent, bypass, ablation...)'), ta('medications', 'Cardiac medications'),
     ] },
+    { key: 'af_risk', label: L('Stroke and bleeding risk (atrial fibrillation)', 'Risque embolique et hémorragique (FA)', 'خطر السكتة والنزيف (الرجفان الأذيني)'), fields: [
+      b('atrial_fibrillation', 'Atrial fibrillation'), b('chf', 'Heart failure / LV dysfunction'), b('hypertension', 'Hypertension'), b('diabetes', 'Diabetes'),
+      b('stroke_tia', 'Previous stroke, TIA or embolism'), b('vascular_disease', 'Vascular disease (MI, PAD, aortic plaque)'),
+      comp('cha2ds2_vasc', 'CHA₂DS₂-VASc', 'cha2ds2_vasc'),
+      b('uncontrolled_htn', 'Uncontrolled hypertension (SBP > 160)'), b('abnormal_renal', 'Abnormal kidney function'), b('abnormal_liver', 'Abnormal liver function'),
+      b('bleeding_history', 'Previous major bleeding'), b('labile_inr', 'Labile INR'), b('antiplatelet_nsaid', 'Antiplatelet or NSAID use'), b('alcohol', 'Alcohol (8+ drinks a week)'),
+      comp('has_bled', 'HAS-BLED', 'has_bled'),
+    ] },
+    { key: 'anticoagulation', label: L('Anticoagulation and INR', 'Anticoagulation et INR', 'مضادات التخثر وINR'), widget: 'trend', chart: { rows: 'inr_log', series: ['inr'] }, fields: [
+      sel('anticoagulant', 'Anticoagulant', ['none', 'warfarin', 'acenocoumarol', 'apixaban', 'rivaroxaban', 'dabigatran', 'edoxaban']),
+      n('inr_target_low', 'INR target from', '', 1, 4.5, { step: 0.1 }), n('inr_target_high', 'INR target to', '', 1.5, 5, { step: 0.1 }),
+      rep('inr_log', 'INR checks', [d('date', 'Date', { required: true }), n('inr', 'INR', '', 0.5, 10, { step: 0.1 }), n('weekly_dose_mg', 'Weekly dose', 'mg', 0, 200, { step: 0.5 }), d('next_test', 'Next test')]),
+    ] },
     { key: 'ecg', label: L('ECG records', 'ECG', 'تخطيط القلب'), fields: [
       rep('items', 'ECGs', [d('date', 'Date', { required: true }), t('rhythm', 'Rhythm'), n('rate', 'Rate', 'bpm', 20, 250), t('findings', 'Findings')]),
     ] },
-    { key: 'echo', label: L('Echocardiography', 'Échocardiographie', 'تخطيط صدى القلب'), fields: [
+    { key: 'echo', label: L('Echocardiography', 'Échocardiographie', 'تخطيط صدى القلب'), chart: { rows: 'items', series: ['ef_percent'] }, widget: 'trend', fields: [
       rep('items', 'Echo reports', [d('date', 'Date', { required: true }), n('ef_percent', 'Ejection fraction', '%', 5, 90), t('findings', 'Findings')]),
     ] },
-  ], [...COMMON_WIDGETS, 'bp_followups']),
+    { key: 'devices', label: L('Devices and procedures', 'Dispositifs et interventions', 'الأجهزة والإجراءات'), fields: [
+      rep('items', 'Devices and procedures', [sel('type', 'Type', ['stent', 'bypass', 'pacemaker', 'icd', 'crt', 'valve_replacement', 'ablation', 'other'], { required: true }),
+        d('date', 'Date'), t('details', 'Details (site, model)'), d('next_check', 'Next check')]),
+    ] },
+  ], [...COMMON_WIDGETS, 'bp_followups', 'inr_due', 'device_checks']),
+
+  ...profile('endocrinology', 'Endocrinology and diabetes profile', [
+    VITALS,
+    { key: 'diabetes', label: L('Diabetes', 'Diabète', 'السكري'), fields: [
+      sel('type', 'Diabetes type', ['none', 'type_1', 'type_2', 'prediabetes', 'gestational', 'other']), n('diagnosed_year', 'Year diagnosed', '', 1930, 2100),
+      multi('treatment', 'Treatment', ['diet', 'metformin', 'sulfonylurea', 'dpp4', 'sglt2', 'glp1', 'insulin', 'other']),
+      b('hypoglycemia', 'Hypoglycemia episodes'), ta('complications', 'Known complications'),
+    ] },
+    { key: 'labs', label: L('Lab results', 'Résultats biologiques', 'نتائج المختبر'), widget: 'trend',
+      chart: { rows: 'results', series: ['hba1c', 'fasting_glucose', 'ldl', 'triglycerides', 'tsh', 'free_t4', 'creatinine', 'uacr'] }, fields: [
+      rep('results', 'Results', [d('date', 'Date', { required: true }), n('hba1c', 'HbA1c', '%', 3, 20, { step: 0.1 }), n('fasting_glucose', 'Fasting glucose', 'mg/dL', 20, 800),
+        n('ldl', 'LDL cholesterol', 'mg/dL', 10, 500), n('triglycerides', 'Triglycerides', 'mg/dL', 10, 5000), n('tsh', 'TSH', 'mIU/L', 0, 200, { step: 0.01 }),
+        n('free_t4', 'Free T4', 'ng/dL', 0, 10, { step: 0.01 }), n('creatinine', 'Creatinine', 'mg/dL', 0.1, 20, { step: 0.01 }), n('uacr', 'Urine albumin/creatinine', 'mg/g', 0, 5000)]),
+      comp('egfr', 'eGFR (CKD-EPI 2021, latest creatinine)', 'egfr'),
+    ] },
+    { key: 'insulin', label: L('Insulin regimen', 'Schéma d’insuline', 'نظام الأنسولين'), fields: [
+      rep('regimen', 'Insulins', [t('insulin', 'Insulin', { required: true }), sel('kind', 'Kind', ['basal', 'bolus', 'premixed']),
+        n('morning', 'Morning', 'U', 0, 200), n('noon', 'Noon', 'U', 0, 200), n('evening', 'Evening', 'U', 0, 200), n('bedtime', 'Bedtime', 'U', 0, 200)]),
+      comp('total_daily', 'Total daily dose', 'total_daily_insulin'), ta('correction', 'Correction scale / instructions'),
+    ] },
+    { key: 'screening', label: L('Complication screening', 'Dépistage des complications', 'فحص المضاعفات'), widget: 'diabetes_recalls', fields: [
+      d('last_eye_exam', 'Last retinal eye exam'), sel('retinopathy', 'Retinopathy', ['none', 'mild', 'moderate', 'severe', 'proliferative']),
+      d('last_foot_exam', 'Last foot exam'), sel('foot_risk', 'Foot risk', ['low', 'moderate', 'high', 'active_ulcer']), b('neuropathy', 'Neuropathy'),
+    ] },
+    { key: 'thyroid', label: L('Thyroid and other endocrine', 'Thyroïde et autres', 'الغدة الدرقية وغيرها'), fields: [
+      sel('thyroid_condition', 'Thyroid condition', ['none', 'hypothyroidism', 'hyperthyroidism', 'nodule', 'goiter', 'thyroid_cancer']),
+      t('thyroid_medication', 'Thyroid medication and dose'), ta('other_conditions', 'Other endocrine conditions (adrenal, pituitary, bone)'),
+    ] },
+  ], [...COMMON_WIDGETS, 'diabetes_recalls']),
 
   ...profile('general_practice', 'General practice profile', [VITALS, GENERAL_HISTORY], [...COMMON_WIDGETS, 'chronic_followups']),
 ];
@@ -185,6 +241,16 @@ export const EXAM_PRESETS: Preset[] = [
   exam('cardiology', 'Cardiovascular examination', [
     { ...VITALS, key: 'vitals' },
     { key: 'cardio', label: L('Cardiovascular examination', 'Examen cardiovasculaire', 'الفحص القلبي الوعائي'), fields: [ta('heart_sounds', 'Heart sounds'), t('murmur', 'Murmur'), b('edema', 'Peripheral edema'), ta('pulses', 'Peripheral pulses'), ta('ecg_today', 'ECG today')] },
+  ]),
+  exam('endocrinology', 'Endocrine and diabetic examination', [
+    { ...VITALS, key: 'vitals' },
+    { key: 'foot', label: L('Diabetic foot examination', 'Examen du pied diabétique', 'فحص القدم السكرية'), fields: [
+      sel('monofilament_left', 'Monofilament, left', ['normal', 'reduced', 'absent']), sel('monofilament_right', 'Monofilament, right', ['normal', 'reduced', 'absent']),
+      sel('pulses', 'Foot pulses', ['present', 'reduced', 'absent']), b('ulcer', 'Ulcer'), b('deformity', 'Deformity or callus'), ta('foot_notes', 'Notes')] },
+    { key: 'thyroid', label: L('Thyroid examination', 'Examen thyroïdien', 'فحص الغدة الدرقية'), fields: [
+      sel('goiter', 'Goiter', ['none', 'diffuse', 'nodular']), b('nodule', 'Palpable nodule'), ta('thyroid_notes', 'Notes')] },
+    { key: 'glucose_today', label: L('Glucose today', 'Glycémie du jour', 'السكر اليوم'), fields: [
+      n('capillary_glucose', 'Capillary glucose', 'mg/dL', 20, 800), sel('timing', 'Timing', ['fasting', 'before_meal', 'after_meal', 'random'])] },
   ]),
   exam('general_practice', 'General examination', [{ ...VITALS, key: 'vitals' }, GENERAL_EXAM]),
 ];

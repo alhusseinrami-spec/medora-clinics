@@ -3,12 +3,13 @@ import { useState } from 'react';
 import { COMPUTED, label as L, type Field as F, type Section, type TemplateSchema } from '@medora/shared';
 import { Button, ErrorNote, Field, Input, Select, Textarea, cx } from './ui';
 import { useI18n } from '@/lib/i18n';
+import { DiabetesRecalls, PregnancyTracker, TrendCharts } from './SpecialtyWidgets';
 
 type Data = Record<string, Record<string, any>>;
 
 /** Generic renderer for any specialty template version. Specialty widgets enhance sections; unknown widgets fall back to plain fields. */
-export function SpecialtyForm({ schema, initial, dateOfBirth, readOnly, onSave, fieldErrors }: {
-  schema: TemplateSchema; initial: Data; dateOfBirth?: string | null; readOnly?: boolean; onSave?: (d: Data) => Promise<void>; fieldErrors?: { path: string; message: string }[];
+export function SpecialtyForm({ schema, initial, dateOfBirth, sex, readOnly, onSave, fieldErrors }: {
+  schema: TemplateSchema; initial: Data; dateOfBirth?: string | null; sex?: string | null; readOnly?: boolean; onSave?: (d: Data) => Promise<void>; fieldErrors?: { path: string; message: string }[];
 }) {
   const { t, lang } = useI18n();
   const [data, setData] = useState<Data>(initial ?? {}); const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null); const [ok, setOk] = useState(false);
@@ -23,10 +24,13 @@ export function SpecialtyForm({ schema, initial, dateOfBirth, readOnly, onSave, 
           <h3 className="mb-3 font-[family-name:var(--font-display)] font-semibold">{L(s.label, lang)}</h3>
           {s.widget === 'growth_chart' && <GrowthChart rows={data[s.key]?.measurements ?? []} />}
           {s.widget === 'dental_chart' && <DentalChart rows={data[s.key]?.teeth ?? []} />}
+          {s.widget === 'pregnancy_tracker' && <PregnancyTracker data={data[s.key] ?? {}} />}
+          {s.widget === 'diabetes_recalls' && <DiabetesRecalls data={data} />}
+          {s.chart && <TrendCharts section={s} data={data[s.key] ?? {}} />}
           <div className="grid gap-3 sm:grid-cols-2">
             {s.fields.filter((f) => !f.hidden).map((f) => (
               <FieldInput key={f.key} f={f} sec={s} value={data[s.key]?.[f.key]} onChange={(v) => setVal(s.key, f.key, v)} readOnly={readOnly}
-                computed={f.type === 'computed' ? COMPUTED[f.compute!]?.({ dateOfBirth, data }) : undefined} error={errFor(`${s.key}.${f.key}`)} />
+                computed={f.type === 'computed' ? COMPUTED[f.compute!]?.({ dateOfBirth, sex, data }) : undefined} error={errFor(`${s.key}.${f.key}`)} />
             ))}
           </div>
         </section>
