@@ -25,7 +25,7 @@ export function balanceBadge(inv: any, t: (k: string) => string) {
 export function InvoiceView({ inv, onChange }: { inv: any; onChange: (i: any) => void }) {
   const { t, lang } = useI18n(); const { can, orgId } = useWorkspace();
   const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<null | 'pay' | 'credit' | 'void' | { refund: any }>(null);
+  const [dialog, setDialog] = useState<null | 'pay' | 'credit' | 'void' | 'forgive' | { refund: any }>(null);
   const run = async (k: string, fn: () => Promise<any>) => { setBusy(k); setErr(null); try { const r = await fn(); if (r) onChange(r); setDialog(null); } catch (e) { setErr(e); } finally { setBusy(null); } };
   const m = (n: any) => fmtMoney(n, inv.currency, lang);
   const draft = inv.status === 'draft';
@@ -59,18 +59,23 @@ export function InvoiceView({ inv, onChange }: { inv: any; onChange: (i: any) =>
       </Card>
       {inv.creditNotes?.length > 0 && <Card title={t('creditNote')}><ul className="space-y-1 text-sm">{inv.creditNotes.map((c: any) => <li key={c.id}>
         <Link className="text-brand hover:underline" href={`/w/${orgId}/billing/${c.id}`}>CN-{String(c.invoice_number).padStart(6, '0')}</Link> · {m(c.total)} · {c.notes}</li>)}</ul></Card>}
+      {inv.writeOffs?.length > 0 && <Card title={t('forgiven')}><ul className="space-y-1 text-sm">{inv.writeOffs.map((w: any) => <li key={w.id}>
+        <span className="tabular">{m(w.amount)}</span> · {w.reason} <span className="text-xs text-muted">· {fmtDate(w.created_at, lang)} · {w.created_by_name}</span></li>)}</ul></Card>}
       {inv.claims?.length > 0 && <Card title={t('claims')}><ul className="space-y-1 text-sm">{inv.claims.map((c: any) => <li key={c.id} className="flex items-center justify-between gap-2">
         <span>{c.provider_name} · {m(c.amount_approved ?? c.amount_claimed)}</span><Badge status={c.status}>{t(c.status)}</Badge></li>)}</ul></Card>}
-      {inv.status === 'issued' && inv.kind === 'invoice' && (can('insurance.manage') || can('whatsapp.send') || (can('finance.view') && can('payment.register'))) && <Card>
+      {inv.status === 'issued' && inv.kind === 'invoice' && (can('insurance.manage') || can('whatsapp.send') || can('finance.view')) && <Card>
         <div className="flex flex-wrap gap-2">
           {can('insurance.manage') && <ClaimButton inv={inv} onDone={onChange} />}
           {can('whatsapp.send') && Number(inv.balance) > 0 && <PaymentReminderButton inv={inv} />}
           {can('finance.view') && can('payment.register') && <Button size="sm" variant="secondary" onClick={() => setDialog('credit')}>{t('issueCreditNote')}</Button>}
+          {can('finance.view') && Number(inv.balance) > 0.004 && <Button size="sm" variant="ghost" onClick={() => setDialog('forgive')}>{t('forgive')}</Button>}
           {can('finance.view') && can('payment.register') && inv.payments.length === 0 && <Button size="sm" variant="ghost" onClick={() => setDialog('void')}>{t('voidInvoice')}</Button>}
         </div>
       </Card>}
     </div>
     <PayDialog open={dialog === 'pay'} inv={inv} busy={busy === 'pay'} onClose={() => setDialog(null)} onPay={(b) => run('pay', () => post(`/invoices/${inv.id}/payments`, b))} />
+    <ReasonDialog open={dialog === 'forgive'} title={t('forgive')} hint={`${t('forgiveHint')} ${t('balance')}: ${m(inv.balance)}`} withAmount optionalAmount currency={inv.currency} onClose={() => setDialog(null)}
+      onConfirm={(reason, amount) => run('forgive', () => post(`/invoices/${inv.id}/write-offs`, amount ? { reason, amount } : { reason }))} />
     <ReasonDialog open={dialog === 'void'} title={t('voidInvoice')} hint={t('voidHint')} onClose={() => setDialog(null)} onConfirm={(reason) => run('void', () => post(`/invoices/${inv.id}/void`, { reason }))} />
     <ReasonDialog open={dialog === 'credit'} title={t('issueCreditNote')} hint={t('creditNoteHint')} withAmount currency={inv.currency} onClose={() => setDialog(null)}
       onConfirm={(reason, amount) => run('credit', () => post(`/invoices/${inv.id}/credit-notes`, { reason, amount }))} />
@@ -89,6 +94,7 @@ function Totals({ inv }: { inv: any }) {
   if (inv.kind === 'invoice' && inv.status === 'issued') {
     if (Number(inv.credited)) rows.push([t('credited'), -inv.credited]);
     rows.push([t('paid'), Number(inv.paid) ? -inv.paid : 0]);
+    if (Number(inv.forgiven)) rows.push([t('forgiven'), -inv.forgiven]);
     rows.push([t('balance'), inv.balance, 'font-semibold text-brand']);
   }
   return <dl className="ms-auto mt-3 w-full max-w-xs space-y-1 text-sm">{rows.map(([k, v, cls]) => <div key={k} className={cx('flex justify-between tabular', cls)}><dt>{k}</dt><dd>{m(v)}</dd></div>)}</dl>;
@@ -160,14 +166,14 @@ function PayDialog({ open, inv, busy, onClose, onPay }: { open: boolean; inv: an
   </Dialog>;
 }
 
-function ReasonDialog({ open, title, hint, withAmount, currency, onClose, onConfirm }: { open: boolean; title: string; hint: string; withAmount?: boolean; currency?: string; onClose: () => void; onConfirm: (reason: string, amount?: number) => void }) {
+function ReasonDialog({ open, title, hint, withAmount, optionalAmount, currency, onClose, onConfirm }: { open: boolean; title: string; hint: string; withAmount?: boolean; optionalAmount?: boolean; currency?: string; onClose: () => void; onConfirm: (reason: string, amount?: number) => void }) {
   const { t } = useI18n(); const [reason, setReason] = useState(''); const [amount, setAmount] = useState('');
   useEffect(() => { if (open) { setReason(''); setAmount(''); } }, [open]);
   return <Dialog open={open} onClose={onClose} title={title}>
     <p className="mb-3 text-sm text-muted">{hint}</p>
-    {withAmount && <Field label={`${t('amount')} (${currency})`}><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
+    {withAmount && <Field label={`${optionalAmount ? t('amountOptional') : t('amount')} (${currency})`}><Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
     <Field className="mt-3" label={t('reason')}><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-    <div className="mt-4 flex justify-end"><Button disabled={reason.trim().length < 3 || (withAmount && !(Number(amount) > 0))} onClick={() => onConfirm(reason.trim(), withAmount ? Number(amount) : undefined)}>{title}</Button></div>
+    <div className="mt-4 flex justify-end"><Button disabled={reason.trim().length < 3 || (withAmount && !optionalAmount && !(Number(amount) > 0))} onClick={() => onConfirm(reason.trim(), withAmount && Number(amount) > 0 ? Number(amount) : undefined)}>{title}</Button></div>
   </Dialog>;
 }
 

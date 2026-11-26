@@ -8,7 +8,7 @@ import { ApptActions } from '@/components/ApptActions';
 import { get, patch } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLiveReload, useWorkspace } from '@/lib/workspace';
-import { useDoctors, toLocalInput } from '@/lib/hooks';
+import { useDoctors, toLocalInput, dayKey } from '@/lib/hooks';
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 07:00 - 19:00
 const PX = 56; // px per hour
@@ -33,7 +33,10 @@ export default function Calendar() {
     : `${days[0].toLocaleDateString(lang, { day: 'numeric', month: 'short' })} – ${days[6].toLocaleDateString(lang, { day: 'numeric', month: 'short', year: 'numeric' })}`;
   return (
     <>
-      <PageTitle title={t('calendar')} sub={title} actions={<Button onClick={() => setCreate(new Date(Date.now() + 3600e3))}>{t('newAppointment')}</Button>} />
+      <PageTitle title={t('calendar')} sub={title} actions={<div className="flex gap-2">
+        <a href={`/print/day-sheet?org=${orgId}&date=${dayKey(anchor)}${doctor ? `&doctor=${doctor}` : ''}`} target="_blank" rel="noopener"
+          className="inline-flex h-10 items-center rounded-[10px] border border-line px-4 text-sm font-medium hover:bg-surface">{t('printDaySheet')}</a>
+        <Button onClick={() => setCreate(new Date(Date.now() + 3600e3))}>{t('newAppointment')}</Button></div>} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => shift(-1)}>{lang === 'ar' ? '→' : '←'} {t('prev')}</Button>
         <Button variant="secondary" size="sm" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setAnchor(d); }}>{t('today')}</Button>
@@ -58,7 +61,7 @@ export default function Calendar() {
                 // Appointments that overlap (different doctors at the same time) share the column side by side.
                 return <button key={a.id} onClick={() => setSel(a)} style={{ top, height: h, insetInlineStart: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` }} className={cx('absolute overflow-hidden rounded-md border-s-4 bg-card px-1.5 py-0.5 text-start text-xs shadow-sm ring-1 ring-line',
                   a.status === 'cancelled' || a.status === 'no_show' ? 'border-danger opacity-50' : a.status === 'completed' ? 'border-success' : a.status === 'arrived' || a.status === 'waiting' ? 'border-accent' : a.status === 'in_consultation' ? 'border-brand' : 'border-info')}>
-                  <span className="font-semibold">{fmtTime(a.starts_at, lang)} {a.patient_name}</span>{h > 30 && <span className="block truncate text-muted">{org.me.orgWide || doctors.length > 1 ? a.doctor_name : a.service_name ?? ''}</span>}
+                  <span className="font-semibold">{a.overbook_reason && <span title={`${t('overbooked')}: ${a.overbook_reason}`} className="me-1 text-warning">⚠</span>}{fmtTime(a.starts_at, lang)} {a.patient_name}</span>{h > 30 && <span className="block truncate text-muted">{org.me.orgWide || doctors.length > 1 ? a.doctor_name : a.service_name ?? ''}</span>}
                 </button>;
               })}
             </div></div>;
@@ -81,6 +84,7 @@ function ApptDetail({ a, orgId, onChanged }: { a: any; orgId: string; onChanged:
   return <div className="space-y-4 text-sm">
     <div className="flex items-center justify-between"><span className="tabular">{new Date(a.starts_at).toLocaleDateString(lang)} · {fmtTime(a.starts_at, lang)}–{fmtTime(a.ends_at, lang)}</span><Badge status={a.status}>{status(a.status)}</Badge></div>
     <p className="text-muted">{a.doctor_name}{a.service_name ? ` · ${a.service_name}` : ''}{a.room_name ? ` · ${a.room_name}` : ''}{a.is_walk_in ? ` · ${t('walkIn')}` : ''}</p>
+    {a.overbook_reason && <p className="text-sm text-warning">⚠ {t('overbooked')}: {a.overbook_reason}</p>}
     {a.notes && <p>{a.notes}</p>}
     <Link href={`/w/${orgId}/patients/${a.patient_id}`} className="text-brand hover:underline">→ {t('patient')}</Link>
     <ApptActions appt={a} onDone={onChanged} />

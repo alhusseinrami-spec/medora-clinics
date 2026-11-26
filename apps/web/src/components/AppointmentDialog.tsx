@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button, Dialog, ErrorNote, Field, Input, Select, Textarea, fmtTime } from './ui';
-import { get, post } from '@/lib/api';
+import { ApiError, get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 import { useDoctors, useLoad, toLocalInput } from '@/lib/hooks';
@@ -25,7 +25,8 @@ export function AppointmentDialog({ open, onClose, onSaved, patient, start, walk
   const [doctor, setDoctor] = useState(''); const [service, setService] = useState(''); const [when, setWhen] = useState(toLocalInput(start ?? new Date(Date.now() + 3600e3)));
   const [minutes, setMinutes] = useState(20); const [room, setRoom] = useState(''); const [notes, setNotes] = useState(''); const [rec, setRec] = useState(''); const [count, setCount] = useState(4);
   const [slots, setSlots] = useState<any[]>([]); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setP(patient ?? null); setErr(null); if (start) setWhen(toLocalInput(start)); } }, [open, patient, start]);
+  const [clash, setClash] = useState(false); const [overbook, setOverbook] = useState('');
+  useEffect(() => { if (open) { setP(patient ?? null); setErr(null); setClash(false); setOverbook(''); if (start) setWhen(toLocalInput(start)); } }, [open, patient, start]);
   useEffect(() => { if (!doctor && doctors.length) setDoctor(org.me.doctorMembershipId && doctors.some((d) => d.id === org.me.doctorMembershipId) ? org.me.doctorMembershipId : doctors[0].id); }, [doctors, doctor, org]);
   useEffect(() => { const s = services?.find((x) => x.id === service); if (s) setMinutes(s.default_minutes); }, [service, services]);
   useEffect(() => {
@@ -37,9 +38,14 @@ export function AppointmentDialog({ open, onClose, onSaved, patient, start, walk
     try {
       if (walkIn) await post('/appointments/walk-in', { patientId: p.id, doctorMembershipId: doctor, serviceId: service || undefined, notes: notes || undefined });
       else await post('/appointments', { patientId: p.id, doctorMembershipId: doctor, startsAt: new Date(when).toISOString(), durationMinutes: minutes, serviceId: service || undefined,
-        roomId: room || undefined, notes: notes || undefined, recurrence: rec ? `FREQ=${rec};COUNT=${count}` : undefined });
+        roomId: room || undefined, notes: notes || undefined, recurrence: rec ? `FREQ=${rec};COUNT=${count}` : undefined,
+        overbookReason: clash && overbook.trim() ? overbook.trim() : undefined });
       onSaved(); onClose();
-    } catch (x) { setErr(x); } finally { setBusy(false); }
+    } catch (x) {
+      // The time is taken: where the clinic allows overbooking, offer it with a reason instead of only an error.
+      if (x instanceof ApiError && x.body?.code === 'double_booking' && org.organization.allow_overbooking && !rec && !clash) setClash(true);
+      else setErr(x);
+    } finally { setBusy(false); }
   };
   return (
     <Dialog open={open} onClose={onClose} title={walkIn ? t('walkIn') : t('newAppointment')} wide>
@@ -58,8 +64,11 @@ export function AppointmentDialog({ open, onClose, onSaved, patient, start, walk
             {rec && <Input type="number" min={2} max={52} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-20" aria-label={t('times')} />}</div></Field>
         </>}
         <Field label={t('notes')} className="sm:col-span-2"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+        {clash && <div className="rounded-[10px] bg-warning/10 p-3 sm:col-span-2"><p className="font-medium text-warning">{t('overbookTitle')}</p>
+          <p className="mb-2 text-sm text-muted">{t('overbookHint')}</p>
+          <Field label={t('reason')}><Input value={overbook} onChange={(e) => setOverbook(e.target.value)} autoFocus /></Field></div>}
         <div className="sm:col-span-2"><ErrorNote error={err} /></div>
-        <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button busy={busy} disabled={!p || !doctor}>{t('save')}</Button></div>
+        <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button busy={busy} disabled={!p || !doctor || (clash && overbook.trim().length < 3)}>{clash ? t('overbook') : t('save')}</Button></div>
       </form>
     </Dialog>
   );
