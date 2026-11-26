@@ -255,11 +255,11 @@ export class CommController {
 
   @RequirePerm('whatsapp.send') @Get('whatsapp/conversations')
   conversations(@Ctx() c: TenantInfo, @Query('filter') filter?: string, @Query('patient') patient?: string) {
-    const f = parse({ filter: v.enum('unanswered', 'mine', 'open', 'closed', 'all').optional(), patient: v.uuid().optional() }, { filter, patient });
+    const f = parse({ filter: v.enum('unanswered', 'needs_staff', 'mine', 'open', 'closed', 'all').optional(), patient: v.uuid().optional() }, { filter, patient });
     const mine = c.memberships.map((m) => m.id);
     const where = { unanswered: `cv.status='open' AND cv.last_inbound_at IS NOT NULL AND (cv.last_outbound_at IS NULL OR cv.last_outbound_at < cv.last_inbound_at)`,
-      mine: `cv.assigned_to = ANY($2::uuid[])`, open: `cv.status='open'`, closed: `cv.status='closed'`, all: 'true' }[f.filter ?? 'open'];
-    return this.db.tx(c, (t) => t.q(`SELECT cv.id, cv.contact_number, cv.status, cv.unread, cv.last_message_at, cv.last_inbound_at, cv.last_outbound_at, cv.assigned_to,
+      needs_staff: `cv.status='open' AND cv.needs_staff`, mine: `cv.assigned_to = ANY($2::uuid[])`, open: `cv.status='open'`, closed: `cv.status='closed'`, all: 'true' }[f.filter ?? 'open'];
+    return this.db.tx(c, (t) => t.q(`SELECT cv.id, cv.contact_number, cv.status, cv.handled_by, cv.needs_staff, cv.needs_staff_reason, cv.unread, cv.last_message_at, cv.last_inbound_at, cv.last_outbound_at, cv.assigned_to,
         p.id AS patient_id, p.full_name AS patient_name, p.patient_number, au.full_name AS assigned_name, a.display_number,
         (SELECT body FROM whatsapp_messages m WHERE m.conversation_id=cv.id ORDER BY m.created_at DESC LIMIT 1) AS last_body,
         (cv.last_inbound_at > now() - interval '24 hours') AS window_open
@@ -275,6 +275,7 @@ export class CommController {
         FROM whatsapp_conversations cv JOIN whatsapp_accounts a ON a.id=cv.account_id LEFT JOIN patients p ON p.id=cv.patient_id WHERE cv.id=$1 AND cv.organization_id=$2`, [uid(id), c.orgId]);
       if (!cv) throw new NotFoundException('Conversation not found');
       if (cv.unread) await t.q(`UPDATE whatsapp_conversations SET unread=0 WHERE id=$1`, [id]);
+      cv.refills = cv.patient_id ? await t.q(`SELECT id, status, source, created_at, decided_at FROM refill_requests WHERE patient_id=$1 ORDER BY created_at DESC LIMIT 5`, [cv.patient_id]) : [];
       cv.messages = await t.q(`SELECT m.id, m.direction, m.body, m.status, m.error, m.purpose, m.created_at, m.status_at, u.full_name AS sent_by_name
         FROM whatsapp_messages m LEFT JOIN users u ON u.id=m.sent_by WHERE m.conversation_id=$1 ORDER BY m.created_at`, [id]);
       return cv;
@@ -302,6 +303,32 @@ export class CommController {
     });
   }
 
+  /** A team member takes the conversation over: automatic handling stops and it is assigned to them. */
+  @RequirePerm('whatsapp.send') @Post('whatsapp/conversations/:id/take') @HttpCode(200)
+  take(@Param('id') id: string, @Ctx() c: TenantInfo) {
+    return this.handover(c, uid(id), 'staff');
+  }
+
+  /** Back to automatic handling: unassigned, and the "needs a person" flag is cleared. */
+  @RequirePerm('whatsapp.send') @Post('whatsapp/conversations/:id/hand-back') @HttpCode(200)
+  handBack(@Param('id') id: string, @Ctx() c: TenantInfo) {
+    return this.handover(c, uid(id), 'auto');
+  }
+
+  private handover(c: TenantInfo, id: string, to: 'auto' | 'staff') {
+    return this.db.tx(c, async (t) => {
+      const cur = await t.one(`SELECT id FROM whatsapp_conversations WHERE id=$1 AND organization_id=$2`, [id, c.orgId]);
+      if (!cur) throw new NotFoundException('Conversation not found');
+      // The member who takes over: the caller's own membership that holds the WhatsApp permission.
+      const me = to === 'staff' ? (await t.one(`SELECT m.id FROM memberships m JOIN membership_permissions mp ON mp.membership_id=m.id AND mp.permission_code='whatsapp.send'
+          WHERE m.organization_id=$1 AND m.user_id=$2 AND m.status='active' LIMIT 1`, [c.orgId, c.userId]))?.id : null;
+      await t.q(`UPDATE whatsapp_conversations SET handled_by=$2, assigned_to=$3, needs_staff=false, needs_staff_reason=NULL,
+        taken_at=CASE WHEN $2='staff' THEN now() END, status='open' WHERE id=$1`, [id, to, me]);
+      await audit(t, c.userId, c.orgId, to === 'staff' ? 'whatsapp.take_over' : 'whatsapp.hand_back', 'whatsapp_conversation', id);
+      return t.one(`SELECT id, handled_by, assigned_to, needs_staff, taken_at, status FROM whatsapp_conversations WHERE id=$1`, [id]);
+    });
+  }
+
   @RequirePerm('whatsapp.send') @Patch('whatsapp/conversations/:id')
   updateConversation(@Param('id') id: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ assignedTo: v.uuid().nullable(), status: v.enum('open', 'closed').optional(), patientId: v.uuid().nullable() }, body);
@@ -315,6 +342,7 @@ export class CommController {
       const add = (col: string, val: unknown) => { vals.push(val); sets.push(`${col}=$${vals.length}`); };
       if (b.assignedTo !== undefined) add('assigned_to', b.assignedTo);
       if (b.status !== undefined) add('status', b.status);
+      if (b.status === 'closed') { sets.push('needs_staff=false', 'needs_staff_reason=NULL'); }
       if (b.patientId !== undefined) add('patient_id', b.patientId);
       if (!sets.length) throw new BadRequestException('Nothing to update');
       await t.q(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE id=$1`, vals);

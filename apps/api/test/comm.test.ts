@@ -282,3 +282,69 @@ test('message hours: nothing goes out outside the clinic message window; it wait
     assert.notEqual(q.status, 'pending');
   }
 });
+
+test('inbox handover: automatic until someone takes over; unclear messages are flagged for a person', async () => {
+  await dr.patch('/org', { messageWindowStart: '00:00', messageWindowEnd: '23:59' });
+  assert.equal((await dr.put(`/patients/${ids.patient}/consent`, { optedIn: true })).status, 200);
+  const back = await dr.post(`/whatsapp/conversations/${ids.conv}/hand-back`);
+  assert.equal(back.status, 200, JSON.stringify(back.body)); assert.equal(back.body.handled_by, 'auto'); assert.equal(back.body.assigned_to, null);
+  await hook(inbound('100000000000001', '9613123456', 'Is the clinic open on Saturday?'));
+  let list = (await dr.get('/whatsapp/conversations?filter=needs_staff')).body;
+  assert.equal(list.length, 1); assert.equal(list[0].needs_staff_reason, 'message');
+  await hook(inbound('100000000000001', '9613999000', 'Hi, I want to talk to a person'));
+  list = (await dr.get('/whatsapp/conversations?filter=needs_staff')).body;
+  assert.equal(list.length, 2); assert.equal(list.find((x: any) => x.contact_number === '9613999000').needs_staff_reason, 'asked_for_person');
+  const take = await dr.post(`/whatsapp/conversations/${ids.conv}/take`);
+  assert.equal(take.body.handled_by, 'staff'); assert.equal(take.body.assigned_to, ids.drMid); assert.equal(take.body.needs_staff, false);
+  await hook(inbound('100000000000001', '9613123456', 'Thanks'));
+  const conv = await dr.get(`/whatsapp/conversations/${ids.conv}`);
+  assert.equal(conv.body.needs_staff, false, 'a conversation a person is handling is not flagged again');
+  assert.equal((await other.post(`/whatsapp/conversations/${ids.conv}/take`)).status, 404);
+  await dr.post(`/whatsapp/conversations/${ids.conv}/hand-back`);
+});
+
+test('refills: a WhatsApp request reaches the prescribing doctor, who approves or denies; the patient is told', async () => {
+  const rx = await dr.post('/prescriptions', { patientId: ids.patient, notes: null,
+    items: [{ medicationName: 'Amlodipine 5 mg', dosage: '1 tablet', frequency: 'once daily', duration: '3 months', instructions: null, notes: null }] });
+  assert.equal(rx.status, 201, JSON.stringify(rx.body));
+  assert.equal((await dr.post(`/prescriptions/${rx.body.id}/issue`)).status, 201);
+  const before = sent.length;
+  await hook(inbound('100000000000001', '9613123456', 'Can you renew my prescription please?'));
+  const pending = await dr.get('/refills?status=pending');
+  assert.equal(pending.status, 200); assert.equal(pending.body.length, 1, JSON.stringify(pending.body));
+  const req = pending.body[0];
+  assert.equal(req.source, 'whatsapp'); assert.equal(req.prescription_id, rx.body.id); assert.equal(req.items[0].name, 'Amlodipine 5 mg');
+  assert.equal((await dr.get(`/whatsapp/conversations/${ids.conv}`)).body.needs_staff, false, 'recognised, so not flagged');
+  await hook(inbound('100000000000001', '9613123456', 'renew please'));
+  assert.equal((await dr.get('/refills?status=pending')).body.length, 1, 'one pending request per prescription');
+  await tick();
+  assert.ok(sent.slice(before).some((m) => /received your request to renew/.test(m.body.text?.body ?? JSON.stringify(m.body))), 'the patient is told it was received');
+  assert.equal((await other.get('/refills')).body.length, 0, 'other practice sees nothing');
+
+  const ok = await dr.post(`/refills/${req.id}/approve`, { note: null });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body)); assert.equal(ok.body.status, 'approved'); assert.ok(ok.body.new_prescription_id);
+  const renewed = await dr.get(`/prescriptions/${ok.body.new_prescription_id}`);
+  assert.equal(renewed.body.status, 'issued'); assert.equal(renewed.body.items[0].medication_name ?? renewed.body.items[0].name, 'Amlodipine 5 mg');
+  assert.equal((await dr.post(`/refills/${req.id}/deny`, { reason: 'Already decided' })).status, 409);
+  await tick();
+  assert.ok(sent.some((m) => /approved your prescription renewal/.test(m.body.text?.body ?? JSON.stringify(m.body))));
+
+  // Written by the team, then denied.
+  const staff = await dr.post('/refills', { patientId: ids.patient, note: 'Asked at the front desk' });
+  assert.equal(staff.status, 201, JSON.stringify(staff.body)); assert.equal(staff.body.prescription_id, ok.body.new_prescription_id, 'latest prescription');
+  assert.equal((await dr.post('/refills', { patientId: ids.patient, note: null })).status, 409);
+  assert.equal((await dr.post(`/refills/${staff.body.id}/deny`, { reason: 'x' })).status, 400, 'a reason is needed');
+  const no = await dr.post(`/refills/${staff.body.id}/deny`, { reason: 'Needs a blood pressure check first' });
+  assert.equal(no.status, 200); assert.equal(no.body.status, 'denied');
+  await tick();
+  assert.ok(sent.some((m) => /cannot renew your prescription without seeing you/.test(m.body.text?.body ?? JSON.stringify(m.body))));
+  assert.ok(!sent.some((m) => /Amlodipine|blood pressure/.test(JSON.stringify(m.body))), 'no medical content in WhatsApp messages');
+});
+
+test('refills: no WhatsApp message about a renewal for a patient who did not agree to messages', async () => {
+  assert.equal((await dr.put(`/patients/${ids.patient}/consent`, { optedIn: false })).status, 200);
+  const r = await dr.post('/refills', { patientId: ids.patient, note: null });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const ok = await dr.post(`/refills/${r.body.id}/approve`, { note: null });
+  assert.equal(ok.status, 200); assert.equal(ok.body.patientNotified, false, 'the team is told to let the patient know');
+});

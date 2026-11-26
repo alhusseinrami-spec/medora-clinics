@@ -32,7 +32,7 @@ function Inbox() {
   const { data, error, reload } = useLoad<any[]>(`/whatsapp/conversations?filter=${filter}`);
   const [tick, setTick] = useState(0);
   useEffect(() => subscribe((e) => { if (e.type === 'whatsapp') { reload(); setTick((x) => x + 1); } }), [subscribe, reload]);
-  const filters = ['unanswered', 'mine', 'open', 'closed'];
+  const filters = ['unanswered', 'needs_staff', 'mine', 'open', 'closed'];
   return <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
     <Card className="p-0">
       <div className="flex flex-wrap gap-1.5 border-b border-line p-3">{filters.map((f) => <button key={f} onClick={() => setFilter(f)}
@@ -42,7 +42,8 @@ function Inbox() {
         <ul className="max-h-[65vh] divide-y divide-line overflow-y-auto">{data.map((c) => <li key={c.id}>
           <button onClick={() => setSel(c.id)} className={cx('w-full px-4 py-3 text-start hover:bg-surface', sel === c.id && 'bg-brand-soft')}>
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate font-medium">{c.patient_name ?? `+${c.contact_number}`}</span>
+              <span className="flex min-w-0 items-center gap-1.5"><span className="truncate font-medium">{c.patient_name ?? `+${c.contact_number}`}</span>
+                {c.needs_staff && <span title={t(`ns_${c.needs_staff_reason ?? 'message'}`)} className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[10px] font-medium text-warning">{t('needsPerson')}</span>}</span>
               <span className="shrink-0 text-xs text-muted tabular">{c.last_message_at ? fmtTime(c.last_message_at, lang) : ''}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
@@ -63,6 +64,8 @@ function Thread({ id, tick, onChange }: { id: string; tick: number; onChange: ()
   const load = useCallback(() => get(`/whatsapp/conversations/${id}`).then((x) => { setC(x); onChange(); }).catch(setErr), [id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load, tick]);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [c?.messages?.length]);
+  const act = async (a: 'take' | 'hand-back') => { try { await post(`/whatsapp/conversations/${id}/${a}`); load(); } catch (e) { setErr(e); } };
+  const renew = async () => { try { await post('/refills', { patientId: c.patient_id, conversationId: id, note: null }); load(); } catch (e) { setErr(e); } };
   const update = async (b: object) => { try { await patch(`/whatsapp/conversations/${id}`, b); load(); } catch (e) { setErr(e); } };
   const send = async () => {
     if (!text.trim()) return; setBusy(true); setErr(null);
@@ -71,11 +74,21 @@ function Thread({ id, tick, onChange }: { id: string; tick: number; onChange: ()
   if (!c) return <Card><ErrorNote error={err} /><p className="text-muted">{t('loading')}</p></Card>;
   return <Card title={<span>{c.patient_name ? <Link className="hover:underline" href={`/w/${orgId}/patients/${c.patient_id}`}>{c.patient_name}</Link> : t('unknownContact')}
       <span className="ms-2 text-xs font-normal text-muted tabular">+{c.contact_number} · {t('viaNumber')} {c.display_number}</span></span>}
-    actions={<div className="flex items-center gap-2">
-      <Select className="h-8 w-44 text-xs" value={c.assigned_to ?? ''} onChange={(e) => update({ assignedTo: e.target.value || null })} aria-label={t('assignTo')}>
+    actions={<div className="flex flex-wrap items-center gap-2">
+      <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-medium', c.handled_by === 'staff' ? 'bg-brand-soft text-brand' : 'bg-surface text-muted')}>{c.handled_by === 'staff' ? t('handledByTeam') : t('handledAuto')}</span>
+      {c.handled_by === 'staff' ? <Button size="sm" variant="ghost" onClick={() => act('hand-back')}>{t('handBack')}</Button>
+        : <Button size="sm" variant="secondary" onClick={() => act('take')}>{t('takeOver')}</Button>}
+      <Select className="!h-8 !w-44 text-xs" value={c.assigned_to ?? ''} onChange={(e) => update({ assignedTo: e.target.value || null })} aria-label={t('assignTo')}>
         <option value="">{t('unassigned')}</option>{(team.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}</Select>
       <Button size="sm" variant="secondary" onClick={() => update({ status: c.status === 'open' ? 'closed' : 'open' })}>{c.status === 'open' ? t('closeConv') : t('reopen')}</Button>
     </div>}>
+    {c.needs_staff && <p className="mb-3 rounded-[10px] bg-warning/10 p-2.5 text-sm text-warning">{t('needsPerson')}: {t(`ns_${c.needs_staff_reason ?? 'message'}`)}</p>}
+    {c.patient_id && <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+      {c.refills.filter((r: any) => r.status === 'pending').length > 0
+        ? <Link href={`/w/${orgId}/prescriptions?tab=refills`} className="rounded-full bg-accent/15 px-2 py-0.5 font-medium text-accent hover:underline">℞ {t('refillPending')}</Link>
+        : <button onClick={renew} className="text-brand hover:underline">℞ {t('requestRefill')}</button>}
+      {c.refills.filter((r: any) => r.status !== 'pending').slice(0, 1).map((r: any) => <span key={r.id}>· {t(`refill_${r.status}`)} {fmtDate(r.decided_at, lang)}</span>)}
+    </div>}
     {!c.patient_id && <div className="mb-3 rounded-[10px] bg-surface p-3 text-sm">{linking ? <PatientPicker value={null} onChange={(p: any) => { if (p) { update({ patientId: p.id }); setLinking(false); } }} />
       : <button className="text-brand hover:underline" onClick={() => setLinking(true)}>{t('linkPatient')}</button>}</div>}
     <div className="max-h-[52vh] space-y-2 overflow-y-auto pe-1">

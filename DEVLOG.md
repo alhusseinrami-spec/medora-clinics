@@ -2,6 +2,22 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-26 · Release 8c: clinic functions matched to ITIG Clinic (part 3 of 4)
+
+rami chose to build the inbox handover and WhatsApp refill requests first, and to leave the AI receptionist for later. Test run at end of session: all suites passing (tenant isolation 126 of 126, shared package 13 of 13, API end-to-end 88 of 88 with 3 new). Web production build passes. Browser check on the demo clinic with simulated incoming WhatsApp messages: inbox flags, take over, renewal request card, renew; no console errors.
+
+| Item | Status |
+|---|---|
+| 014 migration: conversation handover (automatic or handled by the team, "needs a person" flag with the reason), refill requests with row-level security, inbound handling | Tested |
+| Inbox: "Needs a person" filter and badge (unknown number, asked for a person, message the clinic cannot answer automatically, renewal without a prescription); Take over (assigns to me, stops automatic handling); Hand back to automatic; replying also takes the conversation over | Tested |
+| Refill requests: a WhatsApp message asking to renew (English, French, Arabic keywords) creates a request for the patient's latest prescription and tells its doctor; the front desk can also ask from the inbox or the patient file. The prescribing doctor renews (a new issued prescription with the same medications) or declines with a reason that stays in the file | Tested |
+| Patient told by WhatsApp when a request is received, renewed or declined, with no medication names, only with consent and inside message hours; otherwise the team is told to let the patient know | Tested |
+| Demo data: a renewal request waiting for Dr Karim | Implemented |
+
+Decisions:
+- Automatic handling today means recognising renewal requests and opt-outs; every other message is flagged for a person. An AI receptionist would plug into the same automatic mode later.
+- A renewal copies the last issued prescription. Changing doses means declining and writing a new prescription.
+
 ## 2026-11-26 · Release 8b: clinic functions matched to ITIG Clinic (part 2 of 4)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 13 of 13, API end-to-end 85 of 85 with 4 new). Web production build passes. Browser check with synthetic data on a demo-mode server: reset, view as owner, doctor, front desk and patient, reports (screen, print and phone width), visits, month calendar; no console errors.
