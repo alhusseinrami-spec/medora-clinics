@@ -25,7 +25,7 @@ npm run build -w @medora/api && npm start -w @medora/api &
 npm run db:seed                              # synthetic demo accounts, password Demo-Medora-2026
 npm run build -w @medora/web && npm start -w @medora/web
 ```
-Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@ or maya@demo.medora.
+Open http://localhost:3000 and sign in as owner@, nour@, karim@, lina@, maya@ or sami@demo.medora.
 
 `npm test` runs every suite. It resets the dev database, so stop the API first and re-seed afterwards.
 

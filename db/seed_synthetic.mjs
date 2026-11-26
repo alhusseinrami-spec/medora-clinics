@@ -20,7 +20,7 @@ class C {
 const tok = (url) => url.split('/invite/')[1];
 const at = (dayOffset, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return d.toISOString(); };
 
-const owner = new C(), nour = new C(), karim = new C(), lina = new C(), maya = new C();
+const owner = new C(), nour = new C(), karim = new C(), lina = new C(), maya = new C(), sami = new C();
 
 // Medical center with departments and rooms
 const center = await owner.post('/auth/register/center', { fullName: 'Rania Khoury', email: 'owner@demo.medora', password: PW, centerName: 'Cedar Synthetic Medical Center', address: '1 Demo Street, Beirut' });
@@ -47,7 +47,10 @@ await lina.post(`/invitations/${tok(invL.acceptUrl)}/accept`);
 const invM = await owner.post('/staff/invitations', { email: 'maya@demo.medora', role: 'receptionist' });
 await maya.post('/auth/register/center', { fullName: 'Maya Front Desk', email: 'maya@demo.medora', password: PW, centerName: 'Maya (personal)' });
 await maya.post(`/invitations/${tok(invM.acceptUrl)}/accept`);
-nour.org = karim.org = lina.org = maya.org = center.organizationId;
+const invS = await owner.post('/staff/invitations', { email: 'sami@demo.medora', role: 'insurance_admin' });
+await sami.post('/auth/register/center', { fullName: 'Sami Insurance Desk', email: 'sami@demo.medora', password: PW, centerName: 'Sami (personal)' });
+await sami.post(`/invitations/${tok(invS.acceptUrl)}/accept`);
+nour.org = karim.org = lina.org = maya.org = sami.org = center.organizationId;
 
 for (const [c, m] of [[nour, mNour], [karim, mKarim]]) {
   await c.put('/availability/working-hours', { doctorMembershipId: m, hours: [1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, starts: '08:00', ends: '18:00' })) });
@@ -87,9 +90,26 @@ await maya.post('/appointments', { patientId: pa[1].id, doctorMembershipId: mKar
 await maya.post('/appointments', { patientId: pa[2].id, doctorMembershipId: mKarim, startsAt: at(2, 10), durationMinutes: 30 });
 for (const a of [a1, a2]) await lina.post(`/appointments/${a.id}/status`, { status: 'arrived' });
 
+// Finance (Release 3): exchange rates, a commission, an insurer, a policy, invoices, a payment, an expense and a claim
+await owner.post('/finance/rates', { lbpPerUsd: 89500, note: 'Synthetic demo rate' });
+const nourSolo = new C(); nourSolo.cookie = nour.cookie; nourSolo.org = solo.organizationId;
+await nourSolo.post('/finance/rates', { lbpPerUsd: 89500, note: 'Synthetic demo rate' });
+await owner.put(`/finance/commissions/${mNour}`, { doctorPercent: 60 });
+await owner.put(`/finance/commissions/${mKarim}`, { doctorPercent: 65 });
+const insurer = await sami.post('/insurance/providers', { name: 'Demo Mutual Insurance (synthetic)', kind: 'private', phone: '+961 1 000 000', email: null, notes: null });
+const policy = await sami.post(`/patients/${pk[0].id}/policies`, { providerId: insurer.id, policyNumber: 'DMI-0001', coveragePercent: 80, memberName: 'Synthetic parent', relationship: 'Child' });
+const inv1 = await maya.post('/invoices', { patientId: pa[0].id, doctorMembershipId: mKarim, issue: true, notes: null,
+  items: [{ description: 'Cardiology consultation', unitPrice: 90, kind: 'consultation', serviceId: null }, { description: 'ECG', unitPrice: 40, kind: 'service', serviceId: null }] });
+await maya.post(`/invoices/${inv1.id}/payments`, { method: 'cash', amount: 100, currency: 'USD', reference: null, note: null });
+const inv2 = await maya.post('/invoices', { patientId: pk[0].id, doctorMembershipId: mNour, issue: true, notes: null,
+  items: [{ description: 'Well-child visit', unitPrice: 80, kind: 'consultation', serviceId: null, insuranceCovered: true }] });
+await sami.post('/claims', { invoiceId: inv2.id, policyId: policy.id, notes: null });
+await owner.post('/finance/expenses', { category: 'rent', description: 'Synthetic monthly rent', amount: 1200, currency: 'USD', method: 'bank_transfer' });
+
 console.log(`Seeded synthetic demo. Sign in with any of these (password ${PW}):
   owner@demo.medora  center owner
   nour@demo.medora   pediatrician (own practice + center)
   karim@demo.medora  cardiologist
   lina@demo.medora   assistant of Dr Nour
-  maya@demo.medora   receptionist`);
+  maya@demo.medora   receptionist
+  sami@demo.medora   insurance desk`);

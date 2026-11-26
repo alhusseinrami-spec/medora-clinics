@@ -72,7 +72,8 @@ export function Stat({ label, value, tone = 'brand', sub }: { label: string; val
 const STATUS_TONE: Record<string, string> = {
   scheduled: 'bg-line text-ink', confirmed: 'bg-info/15 text-info', arrived: 'bg-accent/20 text-accent', waiting: 'bg-warning/15 text-warning',
   in_consultation: 'bg-brand/15 text-brand', completed: 'bg-success/15 text-success', cancelled: 'bg-danger/15 text-danger', no_show: 'bg-danger/15 text-danger',
-  draft: 'bg-warning/15 text-warning', signed: 'bg-success/15 text-success', issued: 'bg-success/15 text-success',
+  draft: 'bg-warning/15 text-warning', signed: 'bg-success/15 text-success', issued: 'bg-info/15 text-info', void: 'bg-line text-muted', paid: 'bg-success/15 text-success', unpaid: 'bg-warning/15 text-warning',
+  submitted: 'bg-info/15 text-info', approved: 'bg-success/15 text-success', partially_approved: 'bg-warning/15 text-warning', rejected: 'bg-danger/15 text-danger', reimbursed: 'bg-success/15 text-success',
 };
 export function Badge({ children, status, className }: { children: ReactNode; status?: string; className?: string }) {
   return <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', status ? STATUS_TONE[status] : 'bg-brand-soft text-brand', className)}>{children}</span>;
@@ -127,3 +128,9 @@ export function Switch({ checked, onChange, disabled, label }: { checked: boolea
 
 export const fmtTime = (iso: string, lang = 'en') => new Date(iso).toLocaleTimeString(lang === 'ar' ? 'ar-LB' : lang, { hour: '2-digit', minute: '2-digit' });
 export const fmtDate = (iso: string, lang = 'en') => new Date(iso).toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Money with its currency; LBP without decimals. */
+export const fmtMoney = (n: number | string | null | undefined, cur = 'USD', lang = 'en') => {
+  const v = Number(n ?? 0);
+  return `${v.toLocaleString(lang === 'ar' ? 'ar-LB' : lang, { minimumFractionDigits: cur === 'LBP' ? 0 : 2, maximumFractionDigits: cur === 'LBP' ? 0 : 2 })} ${cur === 'USD' ? '$' : 'LBP'}`;
+};
