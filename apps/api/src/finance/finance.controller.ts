@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { Db } from '../db/db.service.js';
-import { Ctx, RequireAnyPerm, RequirePerm } from '../common/decorators.js';
+import { Ctx, RequireAnyPerm, RequirePerm, RequireFeature } from '../common/decorators.js';
 import type { TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -34,7 +34,7 @@ export class FinanceController {
   }
 
   // ---------- Doctor commissions (medical centers) ----------
-  @RequirePerm('finance.view') @Get('commissions')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Get('commissions')
   commissions(@Ctx() c: TenantInfo) {
     return this.db.tx(c, (t) => t.q(`SELECT m.id AS membership_id, u.full_name, m.specialty_code, cr.doctor_percent, cr.updated_at
       FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN commission_rules cr ON cr.membership_id=m.id
@@ -42,7 +42,7 @@ export class FinanceController {
   }
 
   /** The doctor's share of what they bill. It is frozen on each invoice when issued, so changes apply to new invoices only. */
-  @RequirePerm('finance.view') @Put('commissions/:membershipId')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Put('commissions/:membershipId')
   setCommission(@Param('membershipId') mid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ doctorPercent: v.num(0, 100) }, body);
     if (!c.orgWide || !c.permissions.has('org.manage')) throw new ForbiddenException('Only center management sets commissions');
@@ -57,7 +57,7 @@ export class FinanceController {
   }
 
   // ---------- Expenses ----------
-  @RequirePerm('finance.view') @Get('expenses')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Get('expenses')
   expenses(@Ctx() c: TenantInfo, @Query('from') from?: string, @Query('to') to?: string) {
     const q = parse({ from: v.date().optional(), to: v.date().optional() }, { from, to });
     return this.db.tx(c, (t) => t.q(`SELECT e.id, e.category, e.description, e.amount, e.currency, e.lbp_per_usd, e.spent_at, e.method_code, e.membership_id, e.department_id,
@@ -69,7 +69,7 @@ export class FinanceController {
   }
 
   /** In a center, a shared expense has no doctor; doctors can only record their own. */
-  @RequirePerm('finance.view') @Post('expenses')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Post('expenses')
   addExpense(@Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ category: v.enum(...CATEGORIES), description: v.str(1, 300).nullable(), amount: v.num(0.01, 1e12), currency: v.enum('USD', 'LBP'),
       spentAt: v.date().optional(), method: v.enum('cash', 'card', 'bank_transfer', 'whish', 'omt').nullable(), doctorMembershipId: v.uuid().nullable(), departmentId: v.uuid().nullable() }, body);
@@ -86,7 +86,7 @@ export class FinanceController {
     });
   }
 
-  @RequirePerm('finance.view') @Patch('expenses/:id')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Patch('expenses/:id')
   updateExpense(@Param('id') eid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ category: v.enum(...CATEGORIES).optional(), description: v.str(1, 300).nullable(), spentAt: v.date().optional() }, body);
     return this.db.tx(c, async (t) => {
@@ -98,7 +98,7 @@ export class FinanceController {
     });
   }
 
-  @RequirePerm('finance.view') @Delete('expenses/:id')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Delete('expenses/:id')
   removeExpense(@Param('id') eid: string, @Ctx() c: TenantInfo) {
     return this.db.tx(c, async (t) => {
       const r = await t.q(`UPDATE expenses SET deleted_at=now() WHERE id=$1 AND deleted_at IS NULL RETURNING id`, [uid(eid)]);
@@ -114,7 +114,7 @@ export class FinanceController {
    * transaction; cash actually received is also given per currency. Row-level security limits a doctor in
    * a center to their own figures, so the same report serves the center and each doctor.
    */
-  @RequirePerm('finance.view') @Get('summary')
+  @RequireFeature('finance') @RequirePerm('finance.view') @Get('summary')
   summary(@Ctx() c: TenantInfo, @Query('from') from: string, @Query('to') to: string) {
     const q = parse({ from: v.date(), to: v.date() }, { from, to });
     if (q.to < q.from) throw new BadRequestException('The end date is before the start date');

@@ -114,10 +114,27 @@ await owner.put(`/staff/${mayaM.id}/permissions`, { permissions: [...mayaM.permi
 for (const p of [pk[0], pk[1], pa[0]]) await maya.put(`/patients/${p.id}/consent`, { optedIn: true });
 for (const purpose of ['confirmation', 'reminder_24h', 'reschedule', 'cancellation']) await owner.put(`/whatsapp/automation/${purpose}`, { enabled: true, offsetMinutes: null, followUpDays: null, sendHour: null });
 
+// Patient app (Release 5): one synthetic patient joins through an invitation link and asks for a visit.
+const invite = await maya.post(`/patients/${pa[0].id}/portal/invitations`, { email: 'patient@demo.medora' });
+const patientUser = new C();
+await patientUser.post('/auth/register/patient', { fullName: 'Synthetic Patient', email: 'patient@demo.medora', password: PW, language: 'en', invitation: invite.inviteUrl.split('/').pop() });
+await patientUser.post('/portal/requests', { patientId: pa[0].id, doctorMembershipId: mKarim, preferredDate: at(5, 9).slice(0, 10), preferredTime: 'morning', note: 'Follow-up on blood pressure (synthetic)' });
+
+// Commercial platform (Release 6): a MEDORA administrator (no workspace), a support request, a payment for the center,
+// and Dr Nour's own practice on the Solo plan. The admin account is made the way production does it: from the server.
+const { execFileSync } = await import('node:child_process');
+execFileSync(process.execPath, [new URL('./platform_admin.js', import.meta.url).pathname, 'create', 'admin@demo.medora', 'MEDORA Admin'], { env: { ...process.env, ADMIN_PASSWORD: PW }, stdio: 'ignore' });
+const admin = new C(); await admin.post('/auth/login', { email: 'admin@demo.medora', password: PW });
+await admin.post(`/admin/workspaces/${center.organizationId}/payments`, { amount: 1490, currency: 'USD', method: 'bank_transfer', reference: 'SYN-DEMO-0001', months: 12 });
+await nourSolo.post('/subscription/plan', { plan: 'solo', cycle: 'monthly' });
+await owner.post('/support', { organizationId: center.organizationId, category: 'billing', subject: 'Invoice for our yearly plan', body: 'Synthetic request: could you send the receipt for our bank transfer?' });
+
 console.log(`Seeded synthetic demo. Sign in with any of these (password ${PW}):
   owner@demo.medora  center owner
   nour@demo.medora   pediatrician (own practice + center)
   karim@demo.medora  cardiologist
   lina@demo.medora   assistant of Dr Nour
   maya@demo.medora   receptionist
-  sami@demo.medora   insurance desk`);
+  sami@demo.medora   insurance desk
+  patient@demo.medora  patient app (opens /portal)
+  admin@demo.medora  MEDORA platform admin (opens /admin)`);

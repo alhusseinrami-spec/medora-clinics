@@ -1,4 +1,5 @@
 'use client';
+import { PatientAppAccess } from '@/components/PortalStaff';
 import { use, useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Select, Tabs, fmtDate, fmtTime } from '@/components/ui';
 import { PageTitle } from '@/components/Shell';
@@ -19,7 +20,7 @@ import { PatientMessages } from '@/components/Comm';
 
 export default function PatientFile({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const { t, lang, status } = useI18n(); const { can, org } = useWorkspace();
+  const { t, lang, status } = useI18n(); const { can, org, feature } = useWorkspace();
   const [p, setP] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [tab, setTab] = useState('overview');
   const [edit, setEdit] = useState(false); const [book, setBook] = useState(false); const [linkOpen, setLinkOpen] = useState(false);
   const load = useCallback(() => get(`/patients/${patientId}`).then(setP).catch(setErr), [patientId]);
@@ -32,7 +33,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
     { key: 'documents', label: t('documents') },
     ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []),
     ...(can('payment.register') || can('finance.view') ? [{ key: 'billing', label: t('billing') }] : []),
-    ...(can('patient.file.read') ? [{ key: 'insurance', label: t('insurance') }, { key: 'messages', label: 'WhatsApp' }] : []), { key: 'timeline', label: t('timeline') }];
+    ...(can('patient.file.read') && feature('insurance') ? [{ key: 'insurance', label: t('insurance') }] : []), ...(can('patient.file.read') && feature('whatsapp') ? [{ key: 'messages', label: 'WhatsApp' }] : []), { key: 'timeline', label: t('timeline') }];
   const age = p.date_of_birth ? Math.floor((Date.now() - Date.parse(p.date_of_birth)) / (365.25 * 86400e3)) : null;
   return (
     <>
@@ -55,6 +56,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
           <Card title={t('doctor')} actions={can('patient.register') && org.organization.kind === 'medical_center' && <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>+ {t('add')}</Button>}>
             <ul className="space-y-1 text-sm">{p.doctors.map((d: any) => <li key={d.membership_id}>{d.full_name} <span className="text-muted">· {d.specialty_code}</span></li>)}</ul>
           </Card>
+          {can('patient.file.read') && feature('patient_app') && <PatientAppAccess patientId={patientId} email={p.email ?? null} />}
         </div>}
         {tab === 'specialty' && <SpecialtyTab patientId={patientId} />}
         {tab === 'consultations' && <Consultations patientId={patientId} />}

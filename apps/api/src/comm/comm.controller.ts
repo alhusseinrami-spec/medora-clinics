@@ -1,6 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Module, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { Db } from '../db/db.service.js';
-import { Ctx, RequireAnyPerm, RequirePerm } from '../common/decorators.js';
+import { Ctx, RequireAnyPerm, RequirePerm, RequireFeature } from '../common/decorators.js';
 import type { TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -14,6 +14,7 @@ const DEFAULT_OFFSETS: Record<string, number | null> = { reminder_24h: -1440, re
 const ACCOUNT_COLS = `a.id, a.membership_id, a.phone_number_id, a.display_number, a.waba_id, a.status, a.last_error, a.connected_at, a.created_at, a.is_active,
   u.full_name AS doctor_name`;
 
+@RequireFeature('whatsapp')
 @Controller()
 export class CommController {
   constructor(private db: Db, private worker: CommWorker) {}

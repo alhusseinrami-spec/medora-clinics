@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Module, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { Db } from '../db/db.service.js';
-import { Ctx, RequirePerm, Tenant } from '../common/decorators.js';
+import { Ctx, RequirePerm, Tenant, RequireFeature } from '../common/decorators.js';
 import type { TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -23,6 +23,7 @@ export class OrgsController {
         memberships: c.memberships, permissions: [...c.permissions].sort(), actingDoctors: c.actingDoctors,
         orgWide: c.orgWide, doctorMembershipId: c.doctorMembershipId,
       },
+      plan: c.plan,
     }));
   }
 
@@ -78,7 +79,7 @@ export class OrgsController {
     return { ok: true };
   }
 
-  @RequirePerm('org.manage') @Post('departments')
+  @RequireFeature('departments') @RequirePerm('org.manage') @Post('departments')
   addDepartment(@Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ name: v.str(2, 120) }, body);
     return this.db.tx(c, async (t) => {

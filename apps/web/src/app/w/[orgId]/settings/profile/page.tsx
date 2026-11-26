@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { PageTitle } from '@/components/Shell';
+import { PushToggle } from '@/components/Pwa';
 import { del, get, patch, post } from '@/lib/api';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
@@ -48,6 +49,7 @@ export default function Profile() {
             <div className="flex justify-end"><Button>{t('save')}</Button></div>
           </form>
         </Card>
+        <Card title={t('pPhoneNotifications')}><PushToggle /></Card>
         <Card title="Sessions">
           <ul className="divide-y divide-line text-sm">{sessions.map((s) => <li key={s.id} className="flex items-center justify-between gap-2 py-2">
             <span className="min-w-0"><span className="block truncate">{s.user_agent || 'Unknown device'}</span><span className="text-xs text-muted">{s.ip} · {new Date(s.last_seen_at).toLocaleString()}</span></span>

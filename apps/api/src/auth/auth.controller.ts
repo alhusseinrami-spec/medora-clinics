@@ -89,6 +89,19 @@ export class AuthController {
     return result;
   }
 
+  /** Patient account, created from a clinic's portal invitation (the email must be the invited one). */
+  @Public() @Post('register/patient')
+  async registerPatient(@Body() body: unknown, @Req() req: AppRequest, @Res({ passthrough: true }) res: Response) {
+    const b = parse({ fullName: v.str(2, 120), email: v.email(), password: v.password(), language: LANG.optional(), invitation: v.str(20, 200) }, body);
+    const result = await this.db.tx({}, async (t) => {
+      const userId = await this.createUser(t, b);
+      const r = await t.one(`SELECT portal_accept_invitation($1) AS patient_id`, [sha256(b.invitation)]);
+      return { userId, patientId: r.patient_id };
+    });
+    await this.startSession(res, req, result.userId, false);
+    return result;
+  }
+
   @Public() @Post('login') @HttpCode(200)
   async login(@Body() body: unknown, @Req() req: AppRequest, @Res({ passthrough: true }) res: Response) {
     const b = parse({ email: v.email(), password: v.str(1, 200) }, body);
@@ -173,7 +186,8 @@ export class AuthController {
       const workspaces = await t.q(`SELECT o.id AS organization_id, o.name, o.kind, m.id AS membership_id, m.role_code, m.specialty_code, m.status
         FROM memberships m JOIN organizations o ON o.id = m.organization_id
         WHERE m.user_id=$1 AND o.status='active' ORDER BY o.name, m.role_code`, [a.userId]);
-      return { user, workspaces };
+      const patientRecords = (await t.one(`SELECT count(*)::int AS n FROM portal_patient_ids()`)).n;
+      return { user, workspaces, patientRecords };
     });
   }
 

@@ -14,5 +14,7 @@ export interface TenantInfo {
   orgWide: boolean;
   /** This user's own doctor membership in the org, if any. */
   doctorMembershipId: string | null;
+  /** The workspace's subscription: plan features and whether data may be changed. */
+  plan: { code: string; status: string; effectiveStatus: string; usable: boolean; features: Record<string, boolean> };
 }
 export interface AppRequest extends Request { auth?: AuthInfo; tenant?: TenantInfo }

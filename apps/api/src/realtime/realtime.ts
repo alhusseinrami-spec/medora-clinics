@@ -14,7 +14,7 @@ interface Sub { ws: WebSocket; userId: string; orgId?: string; orgWide?: boolean
  * the event (ids only, no patient data) to sockets whose user may see that doctor's queue. Clients then refetch over REST.
  * Protocol: connect to /ws with the session cookie (or ?token=), then send {"type":"subscribe","orgId":"..."}.
  */
-export async function attachRealtime(server: Server, db: Db) {
+export async function attachRealtime(server: Server, db: Db, push?: { notifyUser: (u: string, k: string, o?: string | null, id?: string) => Promise<number> }) {
   const wss = new WebSocketServer({ server, path: '/ws' });
   const subs = new Set<Sub>();
   const listener = new pg.Client({ connectionString: config.databaseUrl });
@@ -24,6 +24,7 @@ export async function attachRealtime(server: Server, db: Db) {
   listener.on('notification', (n) => {
     let ev: any; try { ev = JSON.parse(n.payload ?? '{}'); } catch { return; }
     if (n.channel === 'comm_events') {
+      if (ev.type === 'notification' && push) push.notifyUser(ev.user_id, ev.kind, ev.organization_id, ev.id).catch(() => undefined);
       // A new notification goes to that user's sockets; WhatsApp activity tells the workspace's sockets to refetch the inbox
       // (ids only: what each person may read is decided again by the REST call under row-level security).
       for (const s of subs) {

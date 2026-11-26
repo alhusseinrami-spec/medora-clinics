@@ -2,6 +2,79 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 7: launch readiness (security, performance, backups, packaging)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 7 of 7, API end-to-end 68 of 68 with 12 new security and permission tests). Web production build passes. Browser smoke test: 170 checks passed on the development servers and 140 on the Docker stack (desktop, Android and iPhone screen sizes, English and Arabic, every role).
+
+**Nothing is deployed.** The hosting decision is still open. Everything needed to run MEDORA on one server is in `deploy/`, and that stack was built and run end to end inside the development container.
+
+| Item | Status |
+|---|---|
+| Security test: every API route is found automatically and called without a session (401), without a workspace, with another workspace (refused) and, for admin routes, as a normal user (403). New routes are covered without editing the test | Tested |
+| Permission matrix: each role's default permissions checked against real endpoints; permission changes apply at once; a user cannot grant what they do not hold | Tested |
+| Rate limits per address in the database (sign-in 20 per 5 min, registration and password reset 10 per hour, invitation previews 60 per 10 min); answers 429 and fails open if the limiter itself fails | Tested |
+| Security headers on the API (no caching of personal data, no framing, strict CSP, HSTS in production) and on the web app (Content Security Policy, no framing); no framework or stack details leak in errors | Tested |
+| Performance with 20,000 synthetic patients: row-level security permission lookups cached per transaction (patient search 3.9 s to 0.17 s, dashboard 20 s to 0.22 s); new indexes; every screen under 1 s at p95 with 10 concurrent requests. Results in `docs/launch/performance.md` | Tested (`perf/run.mjs`) |
+| Encrypted backups (`ops/backup.sh`): database dump, document files, checksums and row counts, AES-256 with a passphrase, retention; restore (`ops/restore.sh`) verifies checksums and every table's row count; monthly restore drill (`ops/restore_test.sh`) also checks a wrong passphrase is refused | Tested (drill run on the dev database and inside the Docker stack) |
+| Browser and phone smoke test (`e2e/smoke.mjs`): signs in through the form as each role and opens their main screens; fails on error pages, console errors, sideways scrolling on phones or a missing right-to-left layout in Arabic. iPhone is emulated in Chromium; Safari itself was not run | Tested |
+| Docker packaging: API, web (Next.js standalone) and backup images; Compose stack with PostgreSQL, one-off migrations, Caddy with automatic HTTPS, nightly backups; env template; server guide `deploy/README.md` | Tested locally (built, started, seeded, smoke test, encrypted upload, restore drill). Real server and certificate **Awaiting decision** (hosting) |
+| Calendar: overlapping appointments of different doctors now sit side by side; the doctor filter's "All doctors" is translated | Implemented (found by the smoke test screenshots) |
+| Live updates (WebSocket) use the same address as the site behind the reverse proxy | Implemented |
+| User acceptance checklist and go-live list for rami: `docs/launch/UAT-checklist.md` | Delivered for review |
+
+Decisions:
+- The production stack is one server with Docker Compose, matching the recommended hosting option; managed database or cloud services can replace the `db` service later without code changes.
+- The platform admin cannot use the admin console in production until two-factor sign-in is on; the demo seed's admin step therefore stops there in production mode, which is intended.
+
+## 2026-11-25 · Release 6: commercial platform (plans, subscriptions, super admin)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126 with 15 new, shared package 7 of 7, API end-to-end 56 of 56 with 9 new commercial tests). Web production build passes. Browser check with synthetic data: the MEDORA admin goes through overview, workspaces, a workspace's subscription, plans, support (answers a request) and settings. The center owner sees the subscription page and the answer to their request. Dr Nour's practice on the Solo plan has no Finance, Insurance or WhatsApp menus, and the subscription page shows in Arabic. No console errors.
+
+**No online card payments.** Taking card payments needs a payment provider account (for example Stripe or a Lebanese acquirer), so it is **Awaiting credentials**. Until then MEDORA records payments it receives (bank transfer, cash, OMT, Whish, cheque) in the admin console, and each payment renews the subscription for the months it covers.
+
+| Item | Status |
+|---|---|
+| 010 migration: plans with prices, limits and features stored as data; one subscription per workspace with an event history; subscription payments; support requests; platform settings | Tested (15 new isolation checks) |
+| Free trial for every new workspace (14 days by default, plan by workspace kind, both configurable) | Tested |
+| Plan features enforced by the API: finance (expenses, commissions, overview), insurance, WhatsApp, patient app invitations, departments, specialty customization. Invoices, payments and exchange rates stay in every plan. The web app hides menus and tabs the plan does not include | Tested (API), Implemented (UI) |
+| Plan limits (doctors, other staff, locations, patients) enforced by database triggers, whatever the caller | Tested |
+| Inactive subscription (trial ended, expired after the grace days, cancelled, suspended): records stay readable, every change is refused with 402, except the subscription and support pages. A banner tells everyone why | Tested (API), Implemented (UI) |
+| Workspace subscription page: plan, status, trial days left, usage against limits, plan comparison, monthly or yearly billing, upgrade, downgrade (refused when usage does not fit), cancel at period end (a trial ends at once), resume, payments and history | Tested (API), Implemented (UI) |
+| Super-admin console (`/admin`): overview (workspaces, monthly recurring revenue, trials ending, active users, payments, usage, sign-ups per month), workspaces with filters, workspace detail (edit plan, status, trial end, paid-until, negotiated price; record and refund payments; suspend and reactivate), users (search, suspend, reactivate; sessions end at once), plans editor, support inbox, platform settings (trial length, grace days, trial plans, open or close sign-ups) | Tested (API), Implemented (UI). English only (internal tool) |
+| The super admin never sees patient or clinical records: the console reads only through functions that return workspace metadata and counts | Tested |
+| Platform admins are made only from the server (`node db/platform_admin.js grant|revoke|create`), never through the API. In production they must use two-factor sign-in (`ADMIN_REQUIRE_MFA=true` turns this on in development too) | Tested (grant), Implemented (MFA rule) |
+| Support requests between users and MEDORA, private to the requester | Tested |
+| Online card payments, automatic invoices for subscriptions, emailed receipts and trial reminders | Payments and email **Awaiting credentials**; invoices for subscriptions **Planned** |
+| Enterprise: several branches (no location limit), dedicated configuration (negotiated price, custom plans) | Implemented. Custom integrations (API keys, webhooks for clients) **Planned** |
+| Editing specialty presets from the console | **Planned** (presets stay versioned in the repository and are published with `npm run db:presets`) |
+
+Decisions:
+- New practices start on Professional and centers on Medical Center during the trial so they can try everything; they choose a plan afterwards.
+- A workspace whose trial or subscription lapses is never locked out of its records: medical records must stay readable. Only changes stop.
+- Raising the price of a plan applies from the next payment; a negotiated price per workspace overrides the plan price.
+
+## 2026-11-25 · Release 5: mobile app and patient portal
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 111 of 111 with 10 new, shared package 7 of 7, API end-to-end 47 of 47 with 9 new patient-app tests). Web production build passes. Browser check with synthetic data on an iPhone-sized screen and on desktop: the patient signs in and lands in the patient app, sees their request, switches to Arabic (right-to-left); the receptionist sees the request on the dashboard and books it; the patient then sees it booked. No console errors.
+
+**Built as an installable web app (PWA), not as App Store / Play Store apps.** It installs from the browser to the home screen on Android and iPhone, works full screen and receives push notifications. Native store apps are Planned (they need Apple and Google developer accounts).
+
+| Item | Status |
+|---|---|
+| 009 migration: patient accounts, portal invitations, appointment requests, push subscriptions; the patient side reads only through `portal_*` functions limited to the signed-in patient's own records | Tested (10 new isolation checks) |
+| Inviting a patient from the patient file: a single-use link valid 7 days; sign-up must use the invited email; staff of that workspace cannot join as its patient; access can be removed | Tested (API), Implemented (UI). Email delivery of the link **Awaiting credentials**: staff copy the link and share it (for example on WhatsApp) |
+| Patient app: next visit, appointments (upcoming and past), cancel online until 2 hours before, visit requests with preferred date and time, prescriptions the doctor shared, shared documents (open or download, audited), contact details, clinic message language, WhatsApp consent recorded as the patient's own choice | Tested (API), Implemented (UI) |
+| Staff side: appointment requests on the dashboard; booking creates a confirmed appointment (double booking still refused) and queues the WhatsApp confirmation; declining sends the patient a note | Tested (API), Implemented (UI) |
+| Installable app: manifest, icons (including maskable and Apple touch icon), service worker with an offline notice. API responses and pages are never cached on the device because they hold personal data | Implemented |
+| Web Push: real VAPID-signed, encrypted pushes to the browser push services; texts are generic (never medical details) in the user's language; dead subscriptions removed; one push per notification even with several API instances | Tested against a local push service stand-in. Production needs `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` and `WEB_PUSH_SUBJECT` (without them in production push is off) |
+| Native iOS and Android apps, online payment from the app, chat with the clinic inside the app | **Planned** |
+
+Decisions:
+- One account can be both staff somewhere and a patient elsewhere. Staff land on their workspace (the patient app has a link back); accounts with only patient records land on `/portal`.
+- A patient linked to several clinics sees each clinic's records side by side; nothing is merged between clinics.
+- In development the API derives fixed VAPID keys so push works without setup; production refuses to push until real keys are set.
+- iPhone receives web push only when the app was added to the home screen (Apple's rule); the app says so.
+
 ## 2026-11-25 · Release 4: communication (WhatsApp, reminders, inbox, live notifications)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 101 of 101, shared package 7 of 7, API end-to-end 38 of 38 of which 11 are new messaging tests). Web production build passes. Browser click-through with synthetic data: owner connects a number (refused by Meta, shown as awaiting credentials), automatic messages, outbox; receptionist records consent and sends from the patient file. No console errors.
@@ -125,4 +198,4 @@ Test run at end of session: 69 of 69 passing (schema 9, tenant isolation 35, sha
 - WHO growth percentile curves need licensed reference data: **Planned**. The chart shows the child's own measurements.
 - Email and SMS providers: **Awaiting credentials**. WhatsApp: **Planned** (Release 4).
 - Finance and insurance (Release 3): schema exists, API and UI **Planned**.
-- Not production-ready yet: no hosting and no backups configured. CI (GitHub Actions) runs every test suite and the web build on each push and pull request.
+- Not production-ready yet: no hosting and no backups configured (backups and server packaging added in Release 7). CI (GitHub Actions) runs every test suite and the web build on each push and pull request.
