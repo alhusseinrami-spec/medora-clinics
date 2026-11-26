@@ -24,7 +24,7 @@ export default function Prescriptions() {
     <PageTitle title={t('prescriptions')} actions={can('prescription.create') && <Button onClick={() => setPicking(true)}>+ {t('newPrescription')}</Button>} />
     <div className="flex flex-wrap items-end justify-between gap-3">
       <Tabs tabs={[{ key: 'all', label: t('all') }, { key: 'draft', label: t('drafts') }, { key: 'issued', label: t('locked') }, { key: 'cancelled', label: t('cancelledRx') }]} value={tab} onChange={setTab} />
-      <Input className="w-64" placeholder={`${t('search')}…`} value={q} onChange={(e) => setQ(e.target.value)} />
+      <Input className="!w-64" placeholder={`${t('search')}…`} value={q} onChange={(e) => setQ(e.target.value)} />
     </div>
     <div className="mt-4"><ErrorNote error={error ?? err} /></div>
     {!data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noPrescriptions')}</Empty> :

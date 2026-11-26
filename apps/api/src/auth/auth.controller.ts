@@ -15,16 +15,21 @@ const SPECIALTY = v.str(2, 40);
 
 const DEFAULT_HOURS = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, starts: '09:00', ends: '17:00' }));
 
+/** Signs the user in: a new session row and the session cookie. */
+export async function startSession(db: Db, res: Response, req: AppRequest, userId: string, mfaPending: boolean) {
+  const token = newToken();
+  await db.tx({}, (t) => t.q(`SELECT auth_create_session($1,$2,$3,$4,$5,$6)`, [
+    userId, sha256(token), mfaPending, String(req.headers['user-agent'] ?? '').slice(0, 300), req.ip ?? null, `${config.sessionTtlHours} hours`]));
+  res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/', maxAge: config.sessionTtlHours * 3600_000 });
+  return token;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private db: Db) {}
 
-  private async startSession(res: Response, req: AppRequest, userId: string, mfaPending: boolean) {
-    const token = newToken();
-    await this.db.tx({}, (t) => t.q(`SELECT auth_create_session($1,$2,$3,$4,$5,$6)`, [
-      userId, sha256(token), mfaPending, String(req.headers['user-agent'] ?? '').slice(0, 300), req.ip ?? null, `${config.sessionTtlHours} hours`]));
-    res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/', maxAge: config.sessionTtlHours * 3600_000 });
-    return token;
+  private startSession(res: Response, req: AppRequest, userId: string, mfaPending: boolean) {
+    return startSession(this.db, res, req, userId, mfaPending);
   }
 
   /** Creates the user row inside a transaction whose app.user_id is the new id (RLS: users can only insert themselves). */

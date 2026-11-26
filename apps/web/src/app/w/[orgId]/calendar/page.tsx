@@ -15,21 +15,27 @@ const PX = 56; // px per hour
 
 export default function Calendar() {
   const { t, lang, status } = useI18n(); const { can, orgId, org } = useWorkspace(); const doctors = useDoctors();
-  const [view, setView] = useState<'day' | 'week'>('day'); const [anchor, setAnchor] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [view, setView] = useState<'day' | 'week' | 'month'>('day'); const [anchor, setAnchor] = useState(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [doctor, setDoctor] = useState(''); const [appts, setAppts] = useState<any[]>([]); const [create, setCreate] = useState<Date | null>(null); const [sel, setSel] = useState<any>(null);
   const days = useMemo(() => {
     if (view === 'day') return [anchor];
+    if (view === 'month') {
+      // Whole weeks (Monday first) that cover the anchor's month.
+      const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1); const s = new Date(first); s.setDate(1 - ((first.getDay() + 6) % 7));
+      const last = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0); const n = Math.ceil((((last.getTime() - s.getTime()) / 86400e3) + 1) / 7) * 7;
+      return Array.from({ length: n }, (_, i) => { const d = new Date(s); d.setDate(s.getDate() + i); return d; });
+    }
     const s = new Date(anchor); s.setDate(s.getDate() - ((s.getDay() + 6) % 7));
     return Array.from({ length: 7 }, (_, i) => new Date(s.getTime() + i * 86400e3));
   }, [anchor, view]);
   const load = useCallback(() => {
-    const from = days[0]; const to = new Date(days[days.length - 1].getTime() + 86400e3);
+    const from = days[0]; const to = new Date(days[days.length - 1]); to.setDate(to.getDate() + 1);
     get(`/appointments?from=${from.toISOString()}&to=${to.toISOString()}${doctor ? `&doctor=${doctor}` : ''}`).then(setAppts).catch(() => setAppts([]));
   }, [days, doctor]);
   useLiveReload(load);
   if (!can('appointment.manage')) return <Forbidden />;
-  const shift = (n: number) => setAnchor(new Date(anchor.getTime() + n * (view === 'day' ? 1 : 7) * 86400e3));
-  const title = view === 'day' ? anchor.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { weekday: 'long', day: 'numeric', month: 'long' })
+  const shift = (n: number) => { const d = new Date(anchor); if (view === 'month') { d.setDate(1); d.setMonth(d.getMonth() + n); } else d.setDate(d.getDate() + n * (view === 'day' ? 1 : 7)); setAnchor(d); };
+  const title = view === 'month' ? anchor.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { month: 'long', year: 'numeric' }) : view === 'day' ? anchor.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { weekday: 'long', day: 'numeric', month: 'long' })
     : `${days[0].toLocaleDateString(lang, { day: 'numeric', month: 'short' })} – ${days[6].toLocaleDateString(lang, { day: 'numeric', month: 'short', year: 'numeric' })}`;
   return (
     <>
@@ -43,9 +49,10 @@ export default function Calendar() {
         <Button variant="secondary" size="sm" onClick={() => shift(1)}>{t('next')} {lang === 'ar' ? '←' : '→'}</Button>
         <div className="ms-auto flex gap-2">
           {doctors.length > 1 && <Select value={doctor} onChange={(e) => setDoctor(e.target.value)} className="!h-8 w-48"><option value="">{t('allDoctors')}</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.full_name}</option>)}</Select>}
-          <div className="flex rounded-[10px] border border-line p-0.5">{(['day', 'week'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={cx('rounded-lg px-3 py-1 text-sm', view === v ? 'bg-brand text-white' : 'text-muted')}>{t(v)}</button>)}</div>
+          <div className="flex rounded-[10px] border border-line p-0.5">{(['day', 'week', 'month'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={cx('rounded-lg px-3 py-1 text-sm', view === v ? 'bg-brand text-white' : 'text-muted')}>{t(v)}</button>)}</div>
         </div>
       </div>
+      {view === 'month' ? <MonthGrid days={days} month={anchor.getMonth()} appts={appts} onDay={(d) => { setAnchor(d); setView('day'); }} /> :
       <Card className="overflow-x-auto"><div className="flex min-w-[640px]">
         <div className="w-12 shrink-0 pt-8">{HOURS.map((h) => <div key={h} style={{ height: PX }} className="tabular -mt-2 text-end text-[11px] text-muted pe-2">{String(h).padStart(2, '0')}:00</div>)}</div>
         {days.map((d) => {
@@ -66,7 +73,7 @@ export default function Calendar() {
               })}
             </div></div>;
         })}
-      </div></Card>
+      </div></Card>}
       <AppointmentDialog open={!!create} start={create ?? undefined} onClose={() => setCreate(null)} onSaved={load} />
       <Dialog open={!!sel} onClose={() => setSel(null)} title={sel?.patient_name ?? ''}>
         {sel && <ApptDetail a={sel} orgId={orgId} onChanged={() => { load(); setSel(null); }} />}
@@ -110,4 +117,24 @@ function lanes(list: any[]) {
   }
   flush();
   return out;
+}
+
+/** Month view: one cell per day with the number of appointments and the first few names. A click opens that day. */
+function MonthGrid({ days, month, appts, onDay }: { days: Date[]; month: number; appts: any[]; onDay: (d: Date) => void }) {
+  const { t, lang } = useI18n(); const loc = lang === 'ar' ? 'ar-LB' : lang;
+  const byDay = new Map<string, any[]>();
+  for (const a of appts) { if (a.status === 'cancelled') continue; const k = new Date(a.starts_at).toDateString(); (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(a); }
+  const today = new Date().toDateString();
+  return <Card className="overflow-x-auto !p-0"><div className="grid min-w-[640px] grid-cols-7">
+    {days.slice(0, 7).map((d) => <div key={d.getDay()} className="border-b border-line py-2 text-center text-xs font-medium text-muted">{d.toLocaleDateString(loc, { weekday: 'short' })}</div>)}
+    {days.map((d) => {
+      const list = (byDay.get(d.toDateString()) ?? []).sort((x, y) => +new Date(x.starts_at) - +new Date(y.starts_at));
+      return <button key={d.toISOString()} onClick={() => onDay(d)} className={cx('min-h-24 border-b border-s border-line p-1.5 text-start align-top hover:bg-brand-soft/40', d.getMonth() !== month && 'bg-surface/60 text-muted')}>
+        <div className="flex items-center justify-between text-xs"><span className={cx('tabular', d.toDateString() === today && 'rounded-full bg-brand px-1.5 font-semibold text-white')}>{d.getDate()}</span>
+          {list.length > 0 && <span className="rounded-full bg-brand-soft px-1.5 text-[11px] font-medium text-brand" title={t('appointments')}>{list.length}</span>}</div>
+        <ul className="mt-1 space-y-0.5 text-[11px]">{list.slice(0, 3).map((a) => <li key={a.id} className="truncate"><span className="tabular text-muted">{fmtTime(a.starts_at, lang)}</span> {a.patient_name}</li>)}
+          {list.length > 3 && <li className="text-muted">+{list.length - 3}</li>}</ul>
+      </button>;
+    })}
+  </div></Card>;
 }

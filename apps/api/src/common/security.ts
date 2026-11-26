@@ -21,6 +21,7 @@ const RULES: { test: RegExp; method?: string; limit: number; windowSeconds: numb
   { name: 'login', test: /^\/api\/auth\/(login|mfa\/verify)$/, method: 'POST', limit: 20, windowSeconds: 300 },
   { name: 'register', test: /^\/api\/auth\/register\//, method: 'POST', limit: 10, windowSeconds: 3600 },
   { name: 'password', test: /^\/api\/auth\/password\//, method: 'POST', limit: 10, windowSeconds: 3600 },
+  { name: 'demo', test: /^\/api\/demo\/(login|reset)$/, method: 'POST', limit: 30, windowSeconds: 300 },
   { name: 'invite-preview', test: /^\/api\/(invitations|portal\/invitations)\/[^/]+$/, method: 'GET', limit: 60, windowSeconds: 600 },
 ];
 

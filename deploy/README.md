@@ -84,6 +84,14 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 
 Take a backup first. New migrations apply automatically before the API starts; if one fails, the API does not start and the previous data is unchanged (each migration runs in a transaction).
 
+## Public demo server
+
+To show MEDORA to clinics, run a **separate** server with `DEMO_MODE=true` on the API, and give the API the owner connection `DATABASE_URL` as well. Visitors then see a "Demo clinic" box on the sign-in page. They can open the synthetic clinic as the owner, a doctor, the front desk, the assistant, the insurance desk or the patient app, with no password. Inside the app, a strip lets them switch roles or reset the demo.
+
+- **Reset demo** wipes the database and loads the synthetic clinic again (`db/seed_synthetic.mjs`, without the platform administrator). It takes a few seconds and signs everyone out. It refuses to run if any account outside `@demo.medora` exists, so it cannot wipe a real clinic's data. It also refuses if the demo was reset less than 2 minutes ago.
+- On a new demo server, press "Reset demo" on the sign-in page once to load the data.
+- Never set `DEMO_MODE` on the production server.
+
 ## Security notes
 
 - Only Caddy publishes ports. The database, API and web app are reachable only inside the Docker network.

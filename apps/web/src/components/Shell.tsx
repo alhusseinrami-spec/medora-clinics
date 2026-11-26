@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { DemoBanner } from './Demo';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useWorkspace } from '@/lib/workspace';
@@ -25,11 +26,13 @@ export function Shell({ children }: { children: ReactNode }) {
     { href: `${base}/calendar`, label: t('calendar'), icon: '▦', show: can('appointment.manage') },
     { href: `${base}/waiting-room`, label: t('waitingRoom'), icon: '◷', show: can('appointment.manage') },
     { href: `${base}/patients`, label: t('patients'), icon: '◉', show: can('patient.file.read') },
+    { href: `${base}/visits`, label: t('visits'), icon: '◈', show: can('clinical_notes.read') },
     { href: `${base}/prescriptions`, label: t('prescriptions'), icon: '℞', show: can('prescription.view') },
     { href: `${base}/messages`, label: t('messages'), icon: '✉', show: can('whatsapp.send') && feature('whatsapp') },
     { href: `${base}/billing`, label: t('billing'), icon: '▤', show: can('payment.register') || can('finance.view') },
     { href: `${base}/finance`, label: t('finance'), icon: '◔', show: can('finance.view') && feature('finance') },
     { href: `${base}/insurance`, label: t('insurance'), icon: '⛨', show: can('insurance.manage') && feature('insurance') },
+    { href: `${base}/reports`, label: t('reports'), icon: '▥', show: can('report.view') },
   ];
   const settings = [
     { href: `${base}/settings/team`, label: t('team'), show: true },
@@ -46,7 +49,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-line bg-card px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-line bg-card px-3 py-5 md:flex print:!hidden">
         <div className="px-2"><Logo /></div>
         <div className="relative mt-6">
           <button onClick={() => setMenu(!menu)} className="w-full rounded-[10px] border border-line px-3 py-2 text-start hover:bg-surface">
@@ -73,7 +76,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b border-line bg-card/90 px-4 backdrop-blur md:px-8">
+        <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b border-line bg-card/90 px-4 backdrop-blur md:px-8 print:hidden">
           <div className="md:hidden"><Logo size={28} word={false} /></div>
           <span className={cx('inline-flex items-center gap-1.5 text-xs', live ? 'text-success' : 'text-muted')}><span className={cx('size-2 rounded-full', live ? 'bg-success' : 'bg-muted')} />{live ? t('liveConnected') : t('liveOffline')}</span>
           <div className="flex items-center gap-3">
@@ -85,9 +88,10 @@ export function Shell({ children }: { children: ReactNode }) {
             </select>
           </div>
         </header>
-        <nav className="flex gap-1 overflow-x-auto border-b border-line bg-card px-2 md:hidden">
+        <nav className="flex gap-1 overflow-x-auto border-b border-line bg-card px-2 md:hidden print:hidden">
           {[...nav, ...settings].filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('whitespace-nowrap px-3 py-2 text-sm', path.startsWith(n.href) ? 'text-brand font-semibold' : 'text-muted')}>{n.label}</Link>)}
         </nav>
+        <DemoBanner />
         <PlanBanner />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8">{children}</main>
       </div>

@@ -6,6 +6,7 @@ import { Button, ErrorNote, Field, Input } from '@/components/ui';
 import { get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { AuthFrame } from '../AuthFrame';
+import { DemoPicker } from '@/components/Demo';
 
 export default function Login() {
   const { t } = useI18n(); const router = useRouter();
@@ -28,6 +29,7 @@ export default function Login() {
   };
   return (
     <AuthFrame title={t('signIn')}>
+      <DemoPicker />
       <form onSubmit={submit} className="space-y-4">
         {!mfa ? <>
           <Field label={t('email')}><Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>

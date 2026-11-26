@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { canTransition, validateData, type AppointmentStatus, type TemplateSchema } from '@medora/shared';
 import { Db, Tx } from '../db/db.service.js';
 import { Ctx, RequirePerm } from '../common/decorators.js';
@@ -166,6 +166,25 @@ export class ConsultationsController {
       await audit(t, c.userId, c.orgId, 'consultation.discard', 'consultation', cid);
       return { ok: true };
     });
+  }
+
+  /** Clinic-wide visits list, newest first, with the patient, doctor, status and diagnoses. Row-level security limits what each doctor sees. */
+  @RequirePerm('clinical_notes.read') @Get('consultations')
+  listAll(@Ctx() c: TenantInfo, @Query() query: Record<string, string>) {
+    const f = parse({ status: v.enum('draft', 'signed').optional(), doctor: v.uuid().optional(), q: v.str(1, 80).optional(),
+      from: v.date().optional(), to: v.date().optional() }, query);
+    return this.db.tx(c, (t) => t.q(`SELECT c.id, c.status, c.created_at, c.signed_at, c.chief_complaint, c.follow_up_date, c.appointment_id,
+        c.patient_id, p.full_name AS patient_name, p.patient_number, u.full_name AS doctor_name, c.doctor_membership_id,
+        (SELECT coalesce(json_agg(d.description ORDER BY d.position), '[]') FROM diagnoses d WHERE d.consultation_id=c.id) AS diagnoses
+      FROM consultations c JOIN patients p ON p.id=c.patient_id JOIN memberships m ON m.id=c.doctor_membership_id JOIN users u ON u.id=m.user_id
+      JOIN organizations o ON o.id=c.organization_id
+      WHERE c.organization_id=$1 AND ($2::text IS NULL OR c.status=$2) AND ($3::uuid IS NULL OR c.doctor_membership_id=$3)
+        AND ($4::text IS NULL OR lower(p.full_name) LIKE '%' || lower($4) || '%' OR upper(p.patient_number) = upper($4)
+             OR lower(coalesce(c.chief_complaint, '')) LIKE '%' || lower($4) || '%'
+             OR EXISTS (SELECT 1 FROM diagnoses d WHERE d.consultation_id=c.id AND (lower(d.description) LIKE '%' || lower($4) || '%' OR upper(d.code) = upper($4))))
+        AND ($5::date IS NULL OR (c.created_at AT TIME ZONE coalesce(o.timezone, 'Asia/Beirut'))::date >= $5::date)
+        AND ($6::date IS NULL OR (c.created_at AT TIME ZONE coalesce(o.timezone, 'Asia/Beirut'))::date <= $6::date)
+      ORDER BY c.created_at DESC LIMIT 300`, [c.orgId, f.status ?? null, f.doctor ?? null, f.q ?? null, f.from ?? null, f.to ?? null]));
   }
 
   @RequirePerm('clinical_notes.read') @Get('patients/:id/consultations')

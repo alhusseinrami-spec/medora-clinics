@@ -38,6 +38,8 @@ export const config = {
   requireAdminMfa: isProd || env.ADMIN_REQUIRE_MFA === 'true',
   /** Tests that sign up many accounts from one address switch the per-IP limits off. Never in production. */
   rateLimitOff: !isProd && env.RATE_LIMIT === 'off',
+  /** Public demo server: anyone may view the synthetic clinic as any role and reset it. Never on a server with real data. */
+  get demoMode() { return env.DEMO_MODE === 'true'; },
   fileKey: fileKey(),
   /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
   storageDir: env.STORAGE_DIR ?? new URL('../../storage/', import.meta.url).pathname,
