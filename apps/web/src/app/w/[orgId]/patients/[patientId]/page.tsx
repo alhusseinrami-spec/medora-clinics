@@ -87,7 +87,7 @@ function SpecialtyTab({ patientId }: { patientId: string }) {
   return <div className="space-y-4">
     <p className="text-xs text-muted">{t('version')} {s.current.version}{s.current.isCustom ? ' (custom)' : ' (preset)'}{s.saved ? ` · last saved ${new Date(s.saved.updatedAt).toLocaleString()} by ${s.saved.updatedBy ?? '—'}` : ''}</p>
     {olderVersion && <p className="rounded-[10px] bg-info/10 p-3 text-sm text-info">This record was saved with template version {s.saved.version}. Saving now records it under your current version {s.current.version}; the earlier version stays unchanged.</p>}
-    <SpecialtyForm key={k} schema={s.current.schema} initial={s.saved?.data ?? {}} dateOfBirth={s.dateOfBirth} fieldErrors={fe}
+    <SpecialtyForm key={k} schema={s.current.schema} initial={s.saved?.data ?? {}} dateOfBirth={s.dateOfBirth} sex={s.sex} fieldErrors={fe}
       onSave={async (data) => { try { await put(`/patients/${patientId}/specialty`, { data }); setFe([]); setK(k + 1); } catch (e) { if (e instanceof ApiError) setFe(e.body?.fieldErrors ?? []); throw e; } }} />
   </div>;
 }

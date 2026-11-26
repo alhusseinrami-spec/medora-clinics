@@ -124,7 +124,7 @@ export class PatientsController {
   @RequirePerm('patient.history.read') @Get(':id/specialty')
   specialty(@Param('id') pid: string, @Ctx() c: TenantInfo, @Query('doctor') doctor?: string) {
     return this.db.tx(c, async (t) => {
-      const p = await t.one(`SELECT id, date_of_birth FROM patients WHERE id=$1`, [id(pid)]);
+      const p = await t.one(`SELECT id, date_of_birth, sex FROM patients WHERE id=$1`, [id(pid)]);
       if (!p) throw new NotFoundException('Patient not found');
       const d = await this.spec.resolveDoctor(t, c, doctor || undefined);
       const current = await this.spec.effective(t, d.id, d.specialty, 'patient_profile');
@@ -132,7 +132,7 @@ export class PatientsController {
         FROM patient_specialty_profiles sp JOIN template_versions v ON v.id=sp.template_version_id LEFT JOIN users u ON u.id=sp.updated_by
         WHERE sp.patient_id=$1 AND sp.specialty_code=$2`, [pid, d.specialty]);
       return {
-        specialty: d.specialty, dateOfBirth: p.date_of_birth, current,
+        specialty: d.specialty, dateOfBirth: p.date_of_birth, sex: p.sex, current,
         saved: saved ? { data: saved.data, versionId: saved.template_version_id, version: saved.version, schema: saved.schema, updatedAt: saved.updated_at, updatedBy: saved.updated_by } : null,
       };
     });

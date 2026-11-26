@@ -10,6 +10,28 @@ import { get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLiveReload, useWorkspace } from '@/lib/workspace';
 
+type Row = { patient_id: string; full_name: string; due: string; overdue?: boolean; [k: string]: any };
+/** Specialty pack follow-up lists from the dashboard summary, shown when the doctor's specialty dashboard lists the widget. */
+const FOLLOWUPS: { key: string; title: string; detail: (r: Row, t: (k: string) => string) => string }[] = [
+  { key: 'bp_followups', title: 'bpFollowups', detail: (r) => `${r.systolic}/${r.diastolic ?? '–'} mmHg` },
+  { key: 'inr_due', title: 'inrDue', detail: (r) => `INR ${r.inr}` },
+  { key: 'device_checks', title: 'deviceChecks', detail: (r) => String(r.type ?? '').replace(/_/g, ' ') },
+  { key: 'diabetes_recalls', title: 'diabetesRecalls', detail: (r) => (r.items ?? []).join(', ') },
+  { key: 'prenatal_followups', title: 'prenatalFollowups', detail: (r, t) => [`${t('week')} ${r.week}`, ...(r.items ?? [])].join(' · ') },
+  { key: 'pap_recalls', title: 'papRecalls', detail: () => '' },
+];
+
+function FollowupCard({ title, rows, orgId, detail }: { title: string; rows: Row[]; orgId: string; detail: (r: Row) => string }) {
+  const { t, lang } = useI18n();
+  return <Card title={title}>
+    {!rows.length ? <Empty>{t('none')}</Empty> : <ul className="space-y-2 text-sm">{rows.map((r, i) => <li key={i} className="flex items-start justify-between gap-3">
+      <span className="min-w-0"><Link className="font-medium hover:text-brand" href={`/w/${orgId}/patients/${r.patient_id}`}>{r.full_name}</Link>
+        {detail(r) && <span className="block truncate text-xs text-muted">{detail(r)}</span>}</span>
+      <span className={`tabular shrink-0 text-xs ${r.overdue ? 'font-semibold text-danger' : 'text-muted'}`}>{fmtDate(r.due, lang)}{r.overdue ? ` · ${t('overdue')}` : ''}</span>
+    </li>)}</ul>}
+  </Card>;
+}
+
 const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 export default function Dashboard() {
@@ -76,6 +98,8 @@ export default function Dashboard() {
           {can('patient.history.read') && widgets.includes('pregnancies_due') && <Card title={t('deliveriesDue')}>
             {!sum?.pregnancies_due?.length ? <Empty>{t('none')}</Empty> : <ul className="space-y-1.5 text-sm">{sum.pregnancies_due.map((v: any, i: number) => <li key={i} className="flex justify-between"><Link className="hover:text-brand" href={`/w/${orgId}/patients/${v.patient_id}`}>{v.full_name}</Link><span className="text-muted">{fmtDate(v.edd, lang)}</span></li>)}</ul>}
           </Card>}
+          {can('patient.history.read') && FOLLOWUPS.filter((f) => widgets.includes(f.key)).map((f) => (
+            <FollowupCard key={f.key} title={t(f.title)} rows={sum?.[f.key] ?? []} orgId={orgId} detail={(r) => f.detail(r, t)} />))}
           <Card title={t('notifications')} actions={notes.some((n) => !n.read_at) && <button className="text-xs text-brand" onClick={readAll}>✓</button>}>
             <div id="notifications" />
             {notes.length === 0 ? <Empty>{t('none')}</Empty> : <ul className="space-y-2 text-sm">{notes.map((n) => (

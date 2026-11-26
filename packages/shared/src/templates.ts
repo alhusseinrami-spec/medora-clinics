@@ -1,4 +1,5 @@
 // Specialty engine template format (version 1) and the validator shared by API and clients.
+import { ageYears, cha2ds2vasc, cha2ds2vascAdvice, ckdStage, egfrCkdEpi2021, hasBled, latestRow, nextPapSmear, pregnancyRiskFlags, totalDailyInsulin } from './clinical.js';
 
 export type Lang = 'en' | 'ar' | 'fr';
 export type Label = string | Partial<Record<Lang, string>> & { en: string };
@@ -24,7 +25,9 @@ export interface Field {
   compute?: string;
   fields?: Field[]; // repeat rows
 }
-export interface Section { key: string; label: Label; widget?: string; fields: Field[] }
+/** Trend chart over a repeat field of the section: one small chart per series key, rows dated by `date`. */
+export interface SectionChart { rows: string; series: string[] }
+export interface Section { key: string; label: Label; widget?: string; chart?: SectionChart; fields: Field[] }
 export interface TemplateSchema { format: 1; sections: Section[]; widgets?: string[] }
 
 export function label(l: Label, lang: Lang = 'en'): string {
@@ -131,6 +134,11 @@ export function validateSchema(schema: unknown): ValidationError[] {
     if (!sec || !KEY_RE.test(sec.key)) { errors.push({ path: String(sec?.key), message: 'section key must be lower_snake_case' }); continue; }
     if (sk.has(sec.key)) errors.push({ path: sec.key, message: 'duplicate section' }); sk.add(sec.key);
     checkFields(sec.fields, sec.key);
+    if (sec.chart) {
+      const rows = Array.isArray(sec.fields) ? sec.fields.find((f) => f.key === sec.chart!.rows && f.type === 'repeat') : undefined;
+      if (!rows) errors.push({ path: `${sec.key}.chart`, message: 'chart rows must be a repeat field of the section' });
+      else for (const k of sec.chart.series ?? []) if (!rows.fields?.some((f) => f.key === k && f.type === 'number')) errors.push({ path: `${sec.key}.chart.${k}`, message: 'chart series must be a number field of the rows' });
+    }
   }
   return errors;
 }
@@ -174,7 +182,8 @@ export function customize(base: TemplateSchema, c: Customization): { schema: Tem
 
 // ---------- Computed values ----------
 const DAY = 86400000;
-export const COMPUTED: Record<string, (ctx: { dateOfBirth?: string | null; data: Record<string, any>; today?: Date }) => string | number | null> = {
+export interface ComputeCtx { dateOfBirth?: string | null; sex?: string | null; data: Record<string, any>; today?: Date }
+export const COMPUTED: Record<string, (ctx: ComputeCtx) => string | number | null> = {
   age: ({ dateOfBirth, today = new Date() }) => {
     if (!dateOfBirth) return null;
     const d = new Date(dateOfBirth); let months = (today.getFullYear() - d.getFullYear()) * 12 + today.getMonth() - d.getMonth();
@@ -195,4 +204,34 @@ export const COMPUTED: Record<string, (ctx: { dateOfBirth?: string | null; data:
     const w = data?.vitals?.weight_kg, h = data?.vitals?.height_cm; if (!w || !h) return null;
     return Math.round((w / ((h / 100) ** 2)) * 10) / 10;
   },
+  // Cardiology: scores from the stroke and bleeding risk section (sex and age from the patient record).
+  cha2ds2_vasc: ({ data, dateOfBirth, sex, today }) => {
+    const r = data?.af_risk; if (!r) return null;
+    const score = cha2ds2vasc(r, ageYears(dateOfBirth, today), sex);
+    return `${score} · ${cha2ds2vascAdvice(score, sex)}`;
+  },
+  has_bled: ({ data, dateOfBirth, today }) => {
+    const r = data?.af_risk; if (!r) return null;
+    const score = hasBled(r, ageYears(dateOfBirth, today));
+    return `${score} · ${score >= 3 ? 'high bleeding risk, review modifiable factors' : 'low to moderate bleeding risk'}`;
+  },
+  // Endocrinology
+  egfr: ({ data, dateOfBirth, sex, today }) => {
+    const row = latestRow<any>(data?.labs?.results, 'creatinine'); const age = ageYears(dateOfBirth, today);
+    if (!row || age === null || (sex !== 'female' && sex !== 'male')) return null;
+    const e = egfrCkdEpi2021(row.creatinine, age, sex);
+    return `${e} mL/min/1.73m² · ${ckdStage(e)} (${row.date})`;
+  },
+  total_daily_insulin: ({ data }) => {
+    const t = totalDailyInsulin(data?.insulin?.regimen); if (t === null) return null;
+    const w = data?.vitals?.weight_kg;
+    return typeof w === 'number' && w > 0 ? `${t} units · ${Math.round((t / w) * 100) / 100} units/kg` : `${t} units`;
+  },
+  // Gynecology and obstetrics
+  pregnancy_risk: ({ data, dateOfBirth, today }) => {
+    if (!data?.pregnancy?.pregnant) return null;
+    const f = pregnancyRiskFlags(data, ageYears(dateOfBirth, today));
+    return f.length ? f.join(' · ') : 'No risk flags';
+  },
+  next_pap: ({ data }) => nextPapSmear(data?.gynecology?.last_pap_smear),
 };

@@ -52,7 +52,7 @@ export default function ConsultationPage({ params }: { params: Promise<{ orgId: 
       <div className="space-y-6">
         <NotesCard c={c} editable={editable} onSaved={setC} />
         {c.template && editable && <Card title={`${t('examinationForm')} · v${c.template.version}`}>
-          <SpecialtyForm schema={c.template.schema} initial={c.specialty_data ?? {}} dateOfBirth={c.date_of_birth}
+          <SpecialtyForm schema={c.template.schema} initial={c.specialty_data ?? {}} dateOfBirth={c.date_of_birth} sex={c.sex}
             onSave={async (data) => { setC(await patch(`/consultations/${c.id}`, { specialtyData: data })); }} />
         </Card>}
         {c.template && !editable && <ExamSummary schema={c.template.schema} data={c.specialty_data ?? {}} version={c.template.version} />}
