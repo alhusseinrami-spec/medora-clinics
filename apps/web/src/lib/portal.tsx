@@ -37,7 +37,7 @@ export function PortalFrame({ children }: { children: ReactNode }) {
       <div className="min-h-screen bg-surface pb-20 md:pb-8">
         <header className="sticky top-0 z-30 border-b border-line bg-card/95 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-            <Link href="/portal"><Logo size={28} /></Link>
+            <Link href="/portal"><Logo size={34} /></Link>
             <nav className="hidden gap-1 md:flex">{nav.map((n) => <Link key={n.href} href={n.href} className={cx('rounded-[10px] px-3 py-1.5 text-sm font-medium', active(n.href) ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface')}>{n.label}</Link>)}</nav>
             <div className="flex items-center gap-2 text-sm">
               {staffWs && <Link href={`/w/${staffWs.organization_id}/dashboard`} className="hidden text-muted hover:text-ink sm:inline">{t('workspace')}</Link>}

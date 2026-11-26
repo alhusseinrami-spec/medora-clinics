@@ -1,6 +1,6 @@
 /* MEDORA service worker: offline app shell + push notifications.
    API responses (/api/*) are never cached: they hold patient data and must always come from the server. */
-const VERSION = 'medora-v1';
+const VERSION = 'medora-v2';
 // Registered with ?dev=1 under next dev, where chunk names are not content-hashed: then nothing is cached.
 const DEV = new URL(self.location.href).searchParams.has('dev');
 const SHELL = ['/offline.html', '/icon.svg', '/icon-192.png'];

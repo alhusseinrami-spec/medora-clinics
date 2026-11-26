@@ -25,7 +25,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-surface" dir="ltr">
       <header className="sticky top-0 z-20 border-b border-line bg-card">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
-          <Link href="/admin" className="flex items-center gap-2"><Logo size={28} /><span className="rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Admin</span></Link>
+          <Link href="/admin" className="flex items-center gap-2"><Logo size={34} /><span className="rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Admin</span></Link>
           {!denied && <nav className="flex flex-1 flex-wrap gap-1">{nav.map(([h, l]) => <Link key={h} href={h} className={cx('rounded-[10px] px-3 py-1.5 text-sm font-medium', active(h) ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface')}>{l}</Link>)}</nav>}
           <div className="ms-auto flex items-center gap-3 text-sm text-muted">
             {ws && <Link href={`/w/${ws.organization_id}/dashboard`} className="hover:text-ink">My workspace</Link>}

@@ -1,18 +1,37 @@
 'use client';
 import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { WORDMARK_CLINICS, WORDMARK_MEDORA, WORDMARK_VIEWBOX } from './logo-paths';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
-export function Logo({ size = 32, word = true }: { size?: number; word?: boolean }) {
+/** MEDORA Clinics mark: the MEDORA Care cross (dark teal top and bottom, light teal sides, coral centre). */
+export function LogoMark({ size = 32, onDark = false, onWhite = false }: { size?: number; onDark?: boolean; onWhite?: boolean }) {
+  // onWhite: always the light-background colours (used inside the white tile, whatever the theme).
+  const dark = onWhite ? '#115D62' : onDark ? '#E7EEF2' : 'var(--logo-dark)';
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
-        <rect width="64" height="64" rx="16" fill="var(--brand)" />
-        <path d="M12 44 V22 L22 34 L32 18 L42 34 L52 22 V44" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="32" cy="45" r="4.5" fill="var(--accent)" />
-      </svg>
-      {word && <span className="leading-none"><span className="block font-[family-name:var(--font-display)] text-[17px] font-bold tracking-wide">MEDORA</span>
-        <span className="block text-[9px] font-semibold tracking-[0.42em] text-brand">CLINICS</span></span>}
+    <svg width={size} height={size} viewBox="0 0 208 208" aria-hidden className="shrink-0">
+      <rect x="74" y="0" width="60" height="60" rx="12" fill={dark} />
+      <rect x="74" y="148" width="60" height="60" rx="12" fill={dark} />
+      <rect x="0" y="74" width="60" height="60" rx="12" fill="var(--logo-light)" />
+      <rect x="148" y="74" width="60" height="60" rx="12" fill="var(--logo-light)" />
+      <circle cx="104" cy="104" r="30" fill="var(--logo-coral)" />
+    </svg>
+  );
+}
+
+/** Full logo: mark plus the "Medora / CLINICS" wordmark, drawn as outlines so it renders the same everywhere. */
+export function Logo({ size = 40, word = true, onDark = false, tile = false }: { size?: number; word?: boolean; onDark?: boolean; tile?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-[0.32em]" style={{ fontSize: size }} role="img" aria-label="Medora Clinics">
+      {tile
+        ? <span className="grid shrink-0 place-items-center rounded-[22%] bg-white" style={{ width: size * 1.25, height: size * 1.25 }}><LogoMark size={size * 0.8} onWhite /></span>
+        : <LogoMark size={size} onDark={onDark} />}
+      {word && (
+        <svg height={size} viewBox={WORDMARK_VIEWBOX} aria-hidden className="shrink-0">
+          <path d={WORDMARK_MEDORA} fill={onDark ? '#FFFFFF' : 'var(--logo-ink)'} />
+          <path d={WORDMARK_CLINICS} fill={onDark ? 'rgba(255,255,255,0.85)' : 'var(--logo-sub)'} />
+        </svg>
+      )}
     </span>
   );
 }

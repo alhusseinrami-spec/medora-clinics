@@ -7,9 +7,9 @@ export function AuthFrame({ title, children, wide }: { title: string; children: 
   const { t, lang, setLang } = useI18n();
   return (
     <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-brand p-12 text-white lg:flex">
-        <svg className="absolute -end-24 top-24 opacity-10" width="520" height="520" viewBox="0 0 64 64" aria-hidden><path d="M12 44 V22 L22 34 L32 18 L42 34 L52 22 V44" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        <div className="[&_*]:!text-white"><Logo size={40} /></div>
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-[#115D62] p-12 text-white lg:flex">
+        <svg className="absolute -end-40 top-24 opacity-[0.06]" width="520" height="520" viewBox="0 0 208 208" aria-hidden fill="#fff"><rect x="74" width="60" height="60" rx="12" /><rect x="74" y="148" width="60" height="60" rx="12" /><rect y="74" width="60" height="60" rx="12" /><rect x="148" y="74" width="60" height="60" rx="12" /><circle cx="104" cy="104" r="30" /></svg>
+        <div><Logo size={44} onDark tile /></div>
         <div><p className="font-[family-name:var(--font-display)] text-4xl font-semibold leading-tight">{t('tagline')}</p>
           <p className="mt-4 max-w-md text-white/75">One account for every workplace. A workspace that adapts to your specialty. A live waiting room for your team.</p></div>
         <p className="text-xs text-white/60">Development build · synthetic data only</p>
