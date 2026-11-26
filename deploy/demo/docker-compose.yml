@@ -1,0 +1,56 @@
+# MEDORA local demo: the whole platform on one computer with synthetic demo data. Not for real patients.
+#   docker compose -f deploy/demo/docker-compose.yml up -d --build
+# Then open http://localhost:3000 (password for every demo account: Demo-Medora-2026).
+# Stop: docker compose -f deploy/demo/docker-compose.yml down     Start over: add -v to also delete the demo data.
+name: medora-demo
+
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment: { POSTGRES_DB: medora, POSTGRES_USER: medora, POSTGRES_PASSWORD: medora_demo }
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U medora -d medora"], interval: 5s, timeout: 5s, retries: 20 }
+
+  migrate:
+    image: medora-api:demo
+    build: { context: ../.., dockerfile: deploy/api.Dockerfile }
+    working_dir: /app
+    command: ["sh", "-c", "node db/migrate.js && node db/sync_presets.js"]
+    environment: { NODE_ENV: development, DATABASE_URL: "postgres://medora:medora_demo@db:5432/medora", APP_DB_PASSWORD: medora_app_demo }
+    depends_on: { db: { condition: service_healthy } }
+
+  # Development mode: fixed demo keys, no two-factor requirement for the admin, sign-in limits off. Never use this for real data.
+  api:
+    image: medora-api:demo
+    restart: unless-stopped
+    ports: ["4000:4000"]
+    environment:
+      NODE_ENV: development
+      APP_DATABASE_URL: "postgres://medora_app:medora_app_demo@db:5432/medora"
+      WEB_ORIGIN: http://localhost:3000
+      WEB_BASE_URL: http://localhost:3000
+      RATE_LIMIT: "off"
+    volumes: [files:/data/storage]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+
+  # Loads the synthetic demo once (clinic, doctors, patients, appointments, patient app and admin accounts).
+  seed:
+    image: medora-api:demo
+    working_dir: /app
+    command: ["sh", "-c", "node -e \"fetch('http://api:4000/health').catch(()=>process.exit(1))\" && (node db/seed_synthetic.mjs || echo 'Demo data is already loaded.')"]
+    environment: { API_URL: "http://api:4000", DATABASE_URL: "postgres://medora:medora_demo@db:5432/medora" }
+    volumes: ["../../db/seed_synthetic.mjs:/app/db/seed_synthetic.mjs:ro"]
+    depends_on: { api: { condition: service_healthy } }
+    restart: on-failure
+
+  web:
+    image: medora-web:demo
+    build: { context: ../.., dockerfile: deploy/web.Dockerfile, args: { API_URL: "http://api:4000" } }
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  db-data:
+  files:
