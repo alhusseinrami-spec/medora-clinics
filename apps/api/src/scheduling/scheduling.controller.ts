@@ -7,6 +7,7 @@ import type { AuthInfo, TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
 import { queueAppointmentEvent } from '../comm/events.js';
+import { specialtyFollowups } from '../specialty/followups.js';
 
 const id = (x: string) => parse({ id: v.uuid() }, { id: x }).id;
 const DAY = 86400000;
@@ -280,7 +281,7 @@ export class SchedulingController {
     return this.db.tx(c, async (t) => {
       const scope = `a.organization_id=$1 AND ($2::uuid IS NULL OR a.doctor_membership_id=$2)`;
       // Sargable day window in the org time zone (lets the (organization_id, starts_at) index work).
-      const tz = await t.one(`SELECT date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start FROM organizations WHERE id=$1`, [c.orgId]);
+      const tz = await t.one(`SELECT date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start, to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS local_date FROM organizations WHERE id=$1`, [c.orgId]);
       const day = `a.starts_at >= $3::timestamptz AND a.starts_at < $3::timestamptz + interval '1 day'`;
       const r = await t.one(`SELECT
           (SELECT count(*)::int FROM appointments a WHERE ${scope} AND ${day} AND a.status NOT IN ('cancelled')) AS patients_today,
@@ -299,7 +300,9 @@ export class SchedulingController {
           FROM patient_specialty_profiles sp JOIN patients p ON p.id=sp.patient_id
           WHERE sp.organization_id=$1 AND sp.specialty_code='obgyn' AND (sp.data->'pregnancy'->>'pregnant')::boolean IS TRUE AND sp.data->'pregnancy' ? 'lmp'
             AND ((sp.data->'pregnancy'->>'lmp')::date + 280) BETWEEN current_date AND current_date + 60 ORDER BY edd LIMIT 20`, [c.orgId]) : [];
-      return { ...r, next_appointment: next ?? null, vaccinations_due: vaccinationsDue, pregnancies_due: pregnanciesDue };
+      const followups = c.permissions.has('patient.history.read') ? await specialtyFollowups(t, c.orgId, tz.local_date)
+        : { bp_followups: [], inr_due: [], device_checks: [], diabetes_recalls: [], prenatal_followups: [], pap_recalls: [] };
+      return { ...r, next_appointment: next ?? null, vaccinations_due: vaccinationsDue, pregnancies_due: pregnanciesDue, ...followups };
     });
   }
 

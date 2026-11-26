@@ -4,8 +4,9 @@ import { PRESETS, validateSchema, validateData, customize, COMPUTED, canTransiti
 
 test('every preset schema is valid', () => {
   for (const p of PRESETS) assert.deepEqual(validateSchema(p.schema), [], `${p.specialty}/${p.kind}`);
+  for (const p of PRESETS) for (const s of p.schema.sections) for (const f of s.fields) if (f.type === 'computed') assert.ok(f.compute! in COMPUTED, `${p.specialty}.${s.key}.${f.key}`);
   const specialties = new Set(PRESETS.map((p) => p.specialty));
-  for (const s of ['pediatrics', 'obgyn', 'orthopedics', 'dentistry', 'dermatology', 'cardiology', 'general_practice']) assert.ok(specialties.has(s), s);
+  for (const s of ['pediatrics', 'obgyn', 'orthopedics', 'dentistry', 'dermatology', 'cardiology', 'endocrinology', 'general_practice']) assert.ok(specialties.has(s), s);
 });
 
 test('validator accepts good data, rejects bad and unknown fields', () => {
@@ -47,8 +48,8 @@ test('only doctors can hold prescription.create', () => {
   assert.ok(!isGrantable('assistant', 'prescription.create'));
 });
 
-test('every examination preset is valid and covers the 7 specialties', async () => {
+test('every examination preset is valid and covers the 8 specialties', async () => {
   const { EXAM_PRESETS } = await import('./index.js');
   for (const p of EXAM_PRESETS) assert.deepEqual(validateSchema(p.schema), [], p.specialty);
-  assert.equal(new Set(EXAM_PRESETS.map((p) => p.specialty)).size, 7);
+  assert.equal(new Set(EXAM_PRESETS.map((p) => p.specialty)).size, 8);
 });

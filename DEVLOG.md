@@ -8,7 +8,7 @@ Test run at end of session: all suites passing (schema smoke test, tenant isolat
 
 | Item | Status |
 |---|---|
-| 012 migration: clinic rules on the workspace (patient sharing between doctors, overbooking, doctors manage absences, phones on the day sheet, message hours), legal name and tax ID, doctor Order and NSSF numbers, note template | Tested |
+| 013 migration: clinic rules on the workspace (patient sharing between doctors, overbooking, doctors manage absences, phones on the day sheet, message hours), legal name and tax ID, doctor Order and NSSF numbers, note template | Tested |
 | Outstanding balances: list of patients who owe, since when, collected and forgiven this month; forgive a balance (all or part) with a reason, shown on the invoice | Tested |
 | Clinic-wide prescription list with search and status tabs; each prescription prints in English, French or Arabic; Order and NSSF numbers on the printout | Tested |
 | Emergency access: a doctor opens one patient they cannot normally see, by exact patient number or phone, with a reason; access lasts 12 hours, is audited and listed for the owner | Tested |
@@ -16,6 +16,24 @@ Test run at end of session: all suites passing (schema smoke test, tenant isolat
 | Deliberate overbooking with a reason, when the clinic allows it; marked on the calendar | Tested |
 | Printed day sheet per doctor, for working through an outage | Tested |
 | SOAP note template per doctor | Implemented |
+
+## 2026-11-26 · Specialty packs: cardiology, endocrinology, gynecology and obstetrics
+
+The first three specialty packs from the per-specialty feature plan, in the order rami chose. Test run: shared package 13 of 13 (6 new), API end-to-end 72 of 72 (4 new in `specialty-packs.test.ts`). The web production build passes. Screens were checked by hand with synthetic patients (`docs/screenshots/7` to `10`).
+
+| Item | Status |
+|---|---|
+| Trend charts in the specialty engine: a section can declare `chart: { rows, series }` and gets one small chart per value, with a default target band and the out-of-range points in red | Tested (schema check), screens checked by hand |
+| Cardiology: blood pressure, heart rate and weight log with trends; CHA₂DS₂-VASc and HAS-BLED calculated from the risk questions and the patient's age and sex; anticoagulant and INR log with the patient's own INR target; ejection fraction trend; devices and procedures with next check | Tested |
+| Endocrinology now has its own full preset: diabetes type and treatment, lab results with trends (HbA1c, fasting glucose, LDL, triglycerides, TSH, free T4, creatinine, urine albumin), eGFR by CKD-EPI 2021, insulin regimen with total daily dose and units/kg, complication screening with recalls, thyroid; new endocrine examination form (diabetic foot, thyroid, glucose today) | Tested |
+| Obstetrics: pregnancy timeline (week, trimester, due date), routine tests and vaccines by week with done / due / overdue status (anti-D only when Rh negative), next prenatal visit by the 4 / 2 / 1-week rule, risk flags, BP, weight and fundal height trends; gynecology: next Pap smear after 3 years | Tested |
+| Dashboard follow-up cards per specialty: high BP at last reading, INR tests due, device checks, diabetes recalls, prenatal follow-ups, Pap smear recalls | Tested |
+| Widget, recall and schedule wording in English, French and Arabic | Implemented |
+
+Decisions:
+- Target ranges are general defaults (for example HbA1c ≤ 7%, BP 90–140 / 60–90); only INR uses a per-patient target so far. Per-patient or per-doctor targets for the other values are a follow-up.
+- The prenatal schedule follows common international practice. It is not yet checked against the Lebanese Ministry of Public Health protocol.
+- Calculated scores support the doctor's decision and are labelled as such; nothing is prescribed automatically.
 
 ## 2026-11-25 · Release 7: launch readiness (security, performance, backups, packaging)
 
