@@ -2,6 +2,17 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-26 · Release 8b: clinic functions matched to ITIG Clinic (part 2 of 4)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 13 of 13, API end-to-end 85 of 85 with 4 new). Web production build passes. Browser check with synthetic data on a demo-mode server: reset, view as owner, doctor, front desk and patient, reports (screen, print and phone width), visits, month calendar; no console errors.
+
+| Item | Status |
+|---|---|
+| Month view on the calendar: appointment count and first names per day; a click opens the day | Implemented |
+| Reports screen: appointments booked, completed, no-show rate, cancellations, walk-ins, new patients, patients seen; per doctor, per service, per day; most frequent diagnoses (only for those with clinical access); money figures from the finance overview for those allowed. Export to Excel (CSV with accents and Arabic kept) and print or save as PDF | Tested (API), Implemented (export) |
+| Clinic-wide visits list: date, patient, doctor, complaint, diagnoses, draft or signed; search by patient, complaint, diagnosis or ICD code; filter by dates and doctor | Tested |
+| Demo mode (`DEMO_MODE=true`, separate server): view the synthetic clinic as any role without a password, switch role from a strip in the app, reset the demo; reset refuses a database with any non-demo account | Tested |
+
 ## 2026-11-26 · Release 8a: clinic functions matched to ITIG Clinic (part 1 of 4)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 7 of 7, API end-to-end 77 of 77 with 9 new). Web production build passes. Browser check with synthetic data: settings, outstanding balances, prescriptions, calendar, day sheet and emergency access screens open with no console errors.

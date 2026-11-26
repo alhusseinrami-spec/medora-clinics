@@ -200,3 +200,34 @@ test('clinic-wide prescription list: own doctor sees it, other doctor does not, 
   assert.equal((await drA.get('/prescriptions?status=issued')).body.length, 0);
   assert.equal((await drB.get('/prescriptions')).body.length, 0, 'private to the treating doctor');
 });
+
+test('visits list and activity report: per doctor, searchable, owners see counts but not diagnoses', async () => {
+  const w = await desk.post('/appointments/walk-in', { patientId: ids.patient, doctorMembershipId: ids.drA });
+  assert.equal(w.status, 201, JSON.stringify(w.body));
+  const s = await drA.post('/consultations', { appointmentId: w.body.id });
+  assert.equal(s.status, 201, JSON.stringify(s.body));
+  const dx = await drA.req('PUT', `/consultations/${s.body.id}/diagnoses`, { diagnoses: [{ code: 'H66.9', description: 'Otitis media', isPrimary: true }] });
+  assert.equal(dx.status, 200, JSON.stringify(dx.body));
+
+  const list = await drA.get('/consultations');
+  assert.equal(list.status, 200, JSON.stringify(list.body)); assert.equal(list.body.length, 1);
+  assert.equal(list.body[0].patient_name, 'Synthetic Patient Fairouz'); assert.deepEqual(list.body[0].diagnoses, ['Otitis media']);
+  assert.equal((await drA.get('/consultations?q=otitis')).body.length, 1);
+  assert.equal((await drA.get('/consultations?q=H66.9')).body.length, 1);
+  assert.equal((await drA.get('/consultations?status=signed')).body.length, 0);
+  assert.equal((await drB.get('/consultations')).body.length, 0, 'another doctor does not see these visits');
+  assert.equal((await desk.get('/consultations')).status, 403, 'reception does not read visits');
+
+  const [{ from, to }] = await sql(`SELECT ((now() AT TIME ZONE 'Asia/Beirut')::date - 1)::text AS from, ((now() AT TIME ZONE 'Asia/Beirut')::date + 3)::text AS to`);
+  const r = await owner.get(`/reports/activity?from=${from}&to=${to}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.totals.booked >= 2); assert.equal(r.body.totals.walk_in, 1); assert.equal(r.body.totals.new_patients, 1);
+  assert.ok(r.body.byDoctor.some((d: any) => d.doctor_name === 'Dr Karim Synthetic'));
+  assert.equal(r.body.diagnoses.length, 0, 'the owner sees no diagnoses without clinical access');
+  const mine = await drA.get(`/reports/activity?from=${from}&to=${to}`);
+  assert.equal(mine.status, 200); assert.equal(mine.body.diagnoses[0].description, 'Otitis media'); assert.equal(mine.body.totals.visits, 1);
+  assert.equal((await drB.get(`/reports/activity?from=${from}&to=${to}`)).body.totals.booked, 0, 'a doctor in a center counts only their own');
+  assert.equal((await desk.get(`/reports/activity?from=${from}&to=${to}`)).status, 403);
+  assert.equal((await owner.get(`/reports/activity?from=${to}&to=${from}`)).status, 400);
+  assert.equal((await owner.get(`/reports/activity?from=2024-01-01&to=2026-01-01`)).status, 400, 'at most a year');
+});

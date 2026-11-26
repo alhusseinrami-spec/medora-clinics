@@ -31,6 +31,7 @@ const PUBLIC = new Set([
   'GET /api/specialties', 'POST /api/auth/register/doctor', 'POST /api/auth/register/center', 'POST /api/auth/register/patient', 'POST /api/auth/login',
   'POST /api/auth/password/forgot', 'POST /api/auth/password/reset', 'GET /api/invitations/:token', 'GET /api/portal/invitations/:token', 'GET /api/push/key',
   'GET /api/webhooks/whatsapp', 'POST /api/webhooks/whatsapp',
+  'GET /api/demo', 'POST /api/demo/login', 'POST /api/demo/reset',
 ]);
 // Routes that work for any signed-in user without a workspace (own account, own patient-app records, own support requests).
 const ACCOUNT = /^\/api\/(auth\/|portal\/|push\/|support|workspaces$|invitations\/:token\/accept|notifications)/;

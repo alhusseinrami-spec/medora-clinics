@@ -19,12 +19,14 @@ import { FinanceModule } from './finance/finance.module.js';
 import { CommModule } from './comm/comm.controller.js';
 import { PortalModule } from './portal/portal.controller.js';
 import { CommercialModule } from './commercial/commercial.controller.js';
+import { ReportsModule } from './reports/reports.controller.js';
+import { DemoModule } from './demo/demo.controller.js';
 import { PushService } from './portal/push.js';
 import { attachRealtime } from './realtime/realtime.js';
 import { rateLimit, securityHeaders } from './common/security.js';
 
 @Module({
-  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule, PortalModule, CommercialModule],
+  imports: [DbModule, AuthModule, OrgsModule, StaffModule, SpecialtyModule, PatientsModule, SchedulingModule, ClinicalModule, FinanceModule, CommModule, PortalModule, CommercialModule, ReportsModule, DemoModule],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },

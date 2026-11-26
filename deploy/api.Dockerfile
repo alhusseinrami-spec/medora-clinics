@@ -25,7 +25,7 @@ COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/apps/api/package.json apps/api/
 COPY --from=build /app/apps/api/dist/src apps/api/dist/src
 # Schema tools for the one-off "migrate" service (migrations, preset sync, platform admin script).
-COPY db/migrate.js db/sync_presets.js db/platform_admin.js db/
+COPY db/migrate.js db/sync_presets.js db/platform_admin.js db/seed_synthetic.mjs db/
 COPY db/migrations db/migrations
 RUN mkdir -p /data/storage && chown -R node:node /data
 USER node
