@@ -1,6 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { Db, Tx } from '../db/db.service.js';
-import { Ctx, RequireAnyPerm, RequirePerm } from '../common/decorators.js';
+import { Ctx, RequireAnyPerm, RequirePerm, RequireFeature } from '../common/decorators.js';
 import type { TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -22,6 +22,7 @@ const POLICY_COLS: Record<string, string> = {
  * Insurance: a directory of insurers, patient policies, and claims prepared from invoices.
  * No insurer is connected electronically: claims are prepared and tracked here, and submitted by the clinic.
  */
+@RequireFeature('insurance')
 @Controller()
 export class InsuranceController {
   constructor(private db: Db) {}

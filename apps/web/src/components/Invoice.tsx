@@ -1,4 +1,5 @@
 'use client';
+import { PaymentReminderButton } from '@/components/Comm';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Dialog, ErrorNote, Field, Input, Select, Textarea, cx, fmtDate, fmtMoney } from './ui';
@@ -60,9 +61,10 @@ export function InvoiceView({ inv, onChange }: { inv: any; onChange: (i: any) =>
         <Link className="text-brand hover:underline" href={`/w/${orgId}/billing/${c.id}`}>CN-{String(c.invoice_number).padStart(6, '0')}</Link> · {m(c.total)} · {c.notes}</li>)}</ul></Card>}
       {inv.claims?.length > 0 && <Card title={t('claims')}><ul className="space-y-1 text-sm">{inv.claims.map((c: any) => <li key={c.id} className="flex items-center justify-between gap-2">
         <span>{c.provider_name} · {m(c.amount_approved ?? c.amount_claimed)}</span><Badge status={c.status}>{t(c.status)}</Badge></li>)}</ul></Card>}
-      {inv.status === 'issued' && inv.kind === 'invoice' && (can('insurance.manage') || (can('finance.view') && can('payment.register'))) && <Card>
+      {inv.status === 'issued' && inv.kind === 'invoice' && (can('insurance.manage') || can('whatsapp.send') || (can('finance.view') && can('payment.register'))) && <Card>
         <div className="flex flex-wrap gap-2">
           {can('insurance.manage') && <ClaimButton inv={inv} onDone={onChange} />}
+          {can('whatsapp.send') && Number(inv.balance) > 0 && <PaymentReminderButton inv={inv} />}
           {can('finance.view') && can('payment.register') && <Button size="sm" variant="secondary" onClick={() => setDialog('credit')}>{t('issueCreditNote')}</Button>}
           {can('finance.view') && can('payment.register') && inv.payments.length === 0 && <Button size="sm" variant="ghost" onClick={() => setDialog('void')}>{t('voidInvoice')}</Button>}
         </div>

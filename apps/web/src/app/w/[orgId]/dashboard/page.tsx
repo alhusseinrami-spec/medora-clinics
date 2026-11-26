@@ -5,6 +5,7 @@ import { Badge, Button, Card, Empty, Stat, fmtDate, fmtTime } from '@/components
 import { PageTitle } from '@/components/Shell';
 import { AppointmentDialog } from '@/components/AppointmentDialog';
 import { ApptActions } from '@/components/ApptActions';
+import { AppointmentRequests } from '@/components/PortalStaff';
 import { get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLiveReload, useWorkspace } from '@/lib/workspace';
@@ -51,6 +52,7 @@ export default function Dashboard() {
                 <ApptActions appt={{ id: q.appointment_id, status: q.status }} onDone={load} compact />
               </li>))}</ul>}
           </Card>}
+          {scheduling && <AppointmentRequests />}
           {scheduling && <Card title={t('todaysAppointments')}>
             {today.length === 0 ? <Empty>{t('noAppointments')}</Empty> : <ul className="divide-y divide-line">{today.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -77,7 +79,7 @@ export default function Dashboard() {
           <Card title={t('notifications')} actions={notes.some((n) => !n.read_at) && <button className="text-xs text-brand" onClick={readAll}>✓</button>}>
             <div id="notifications" />
             {notes.length === 0 ? <Empty>{t('none')}</Empty> : <ul className="space-y-2 text-sm">{notes.map((n) => (
-              <li key={n.id} className={n.read_at ? 'text-muted' : ''}>{n.kind === 'patient_arrived' ? `● ${t('patientArrived')}` : n.kind} <span className="text-xs text-muted">· {fmtTime(n.created_at, lang)} · {n.organization_name}</span></li>))}</ul>}
+              <li key={n.id} className={n.read_at ? 'text-muted' : ''}>{n.kind === 'patient_arrived' ? `● ${t('patientArrived')}` : n.kind === 'whatsapp_message' ? <a className="hover:underline" href={`/w/${n.payload?.organization_id ?? orgId}/messages?c=${n.payload?.conversation_id ?? ''}`}>✉ {t('whatsappMessage')}</a> : n.kind.startsWith('appointment_') ? (n.payload?.patient_id ? <Link className="hover:underline" href={`/w/${n.payload?.organization_id ?? orgId}/patients/${n.payload.patient_id}`}>▦ {t(`n_${n.kind}`)}</Link> : `▦ ${t(`n_${n.kind}`)}`) : n.kind} <span className="text-xs text-muted">· {fmtTime(n.created_at, lang)} · {n.organization_name}</span></li>))}</ul>}
           </Card>
         </div>
       </div>

@@ -8,14 +8,14 @@ import { get, post } from '@/lib/api';
 import { Logo, cx } from './ui';
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { me, org, orgId, can, live, subscribe } = useWorkspace();
+  const { me, org, orgId, can, feature, live, subscribe } = useWorkspace();
   const { t, lang, setLang, role } = useI18n();
   const path = usePathname(); const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [menu, setMenu] = useState(false);
   useEffect(() => {
     const load = () => get<any[]>('/notifications?unread=1', null).then((n) => setUnread(n.length)).catch(() => {});
-    load(); return subscribe((e) => { if (e.event === 'arrived') load(); });
+    load(); return subscribe((e) => { if (e.event === 'arrived' || e.type === 'notification') load(); });
   }, [subscribe]);
   useEffect(() => { if (me.user.interface_language && me.user.interface_language !== lang && !localStorage.getItem('medora.lang')) setLang(me.user.interface_language as Lang); }, [me, lang, setLang]);
 
@@ -25,16 +25,20 @@ export function Shell({ children }: { children: ReactNode }) {
     { href: `${base}/calendar`, label: t('calendar'), icon: '▦', show: can('appointment.manage') },
     { href: `${base}/waiting-room`, label: t('waitingRoom'), icon: '◷', show: can('appointment.manage') },
     { href: `${base}/patients`, label: t('patients'), icon: '◉', show: can('patient.file.read') },
+    { href: `${base}/messages`, label: t('messages'), icon: '✉', show: can('whatsapp.send') && feature('whatsapp') },
     { href: `${base}/billing`, label: t('billing'), icon: '▤', show: can('payment.register') || can('finance.view') },
-    { href: `${base}/finance`, label: t('finance'), icon: '◔', show: can('finance.view') },
-    { href: `${base}/insurance`, label: t('insurance'), icon: '⛨', show: can('insurance.manage') },
+    { href: `${base}/finance`, label: t('finance'), icon: '◔', show: can('finance.view') && feature('finance') },
+    { href: `${base}/insurance`, label: t('insurance'), icon: '⛨', show: can('insurance.manage') && feature('insurance') },
   ];
   const settings = [
     { href: `${base}/settings/team`, label: t('team'), show: true },
     { href: `${base}/settings/workspace`, label: t('workspace'), show: can('org.manage') },
     { href: `${base}/settings/availability`, label: t('availability'), show: can('appointment.manage') && org.me.actingDoctors.length > 0 },
+    { href: `${base}/settings/whatsapp`, label: 'WhatsApp', show: can('whatsapp.send') && feature('whatsapp') },
     { href: `${base}/settings/specialty`, label: t('specialty'), show: can('template.manage') && !!org.me.doctorMembershipId },
+    { href: `${base}/settings/subscription`, label: t('subscription'), show: can('org.manage') },
     { href: `${base}/settings/profile`, label: t('profile'), show: true },
+    { href: `${base}/support`, label: t('support'), show: true },
   ];
   const myRoles = org.me.memberships.map((m) => role(m.role_code)).join(', ');
   const logout = async () => { await post('/auth/logout'); router.replace('/login'); };
@@ -62,6 +66,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {settings.filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('block rounded-[10px] px-3 py-1.5 text-sm', path.startsWith(n.href) ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface hover:text-ink')}>{n.label}</Link>)}
         </nav>
         <div className="mt-auto space-y-2 px-2 text-xs text-muted">
+          {me.user.is_platform_admin && <Link href="/admin" className="block font-medium text-brand hover:underline">{t('adminConsole')}</Link>}
           <p className="truncate">{me.user.full_name}</p>
           <button onClick={logout} className="hover:text-ink">{t('signOut')}</button>
         </div>
@@ -82,6 +87,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <nav className="flex gap-1 overflow-x-auto border-b border-line bg-card px-2 md:hidden">
           {[...nav, ...settings].filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('whitespace-nowrap px-3 py-2 text-sm', path.startsWith(n.href) ? 'text-brand font-semibold' : 'text-muted')}>{n.label}</Link>)}
         </nav>
+        <PlanBanner />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8">{children}</main>
       </div>
     </div>
@@ -92,3 +98,16 @@ export function PageTitle({ title, sub, actions }: { title: ReactNode; sub?: Rea
   return <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">{title}</h1>{sub && <p className="mt-1 text-sm text-muted">{sub}</p>}</div>{actions && <div className="flex gap-2">{actions}</div>}</div>;
 }
 export function Forbidden() { const { t } = useI18n(); return <p className="text-muted">{t('noPermission')}</p>; }
+
+/** Tells everyone when the workspace can no longer change data, and administrators when the trial ends soon. */
+function PlanBanner() {
+  const { org, orgId, can } = useWorkspace(); const { t } = useI18n();
+  const p = org.plan;
+  if (!p || p.usable) return null;
+  return (
+    <div role="status" className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-sm md:px-8">
+      {t(`planBanner_${p.effectiveStatus}`) === `planBanner_${p.effectiveStatus}` ? t('planBanner_inactive') : t(`planBanner_${p.effectiveStatus}`)}{' '}
+      {can('org.manage') ? <Link href={`/w/${orgId}/settings/subscription`} className="font-medium text-brand hover:underline">{t('subscription')} →</Link> : t('planBannerAskAdmin')}
+    </div>
+  );
+}

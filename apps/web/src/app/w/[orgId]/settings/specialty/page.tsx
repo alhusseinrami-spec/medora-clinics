@@ -9,7 +9,7 @@ import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 
 export default function SpecialtySettings() {
-  const { t, lang } = useI18n(); const { can, org } = useWorkspace();
+  const { t, lang } = useI18n(); const { can, org, feature, orgId } = useWorkspace();
   const [ws, setWs] = useState<any>(null); const [hist, setHist] = useState<any[]>([]); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
   const [nf, setNf] = useState({ section: '', key: '', label: '', type: 'text', options: '' });
   const load = () => { get('/specialty/workspace').then((w) => { setWs(w); setNf((f) => ({ ...f, section: f.section || w.profile.schema.sections[0]?.key })); }).catch(setErr); get('/specialty/history').then(setHist).catch(() => {}); };
@@ -29,6 +29,7 @@ export default function SpecialtySettings() {
       <PageTitle title={t('specialty')} sub={<>{ws.specialty.names?.[lang] ?? ws.specialty.name} · {t('version')} {ws.profile.version} <Badge>{ws.profile.isCustom ? 'custom' : 'preset'}</Badge></>} />
       <p className="mb-4 rounded-[10px] bg-info/10 p-3 text-sm text-info">{t('presetNote')}</p>
       <ErrorNote error={err} />
+      {!feature('specialty_templates') ? <p className="rounded-[10px] border border-line bg-card p-4 text-sm">{t('featureNotInPlan')} {can('org.manage') && <a className="font-medium text-brand hover:underline" href={`/w/${orgId}/settings/subscription`}>{t('subscription')} →</a>}</p> :
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
         <div className="space-y-6">
           <Card title={t('customField')}>
@@ -52,7 +53,7 @@ export default function SpecialtySettings() {
           {hist.length > 0 && <Card title={t('version')}><ul className="text-sm">{hist.map((h) => <li key={h.version_id}>v{h.version} · {new Date(h.published_at).toLocaleString()}</li>)}</ul></Card>}
         </div>
         <Card title="Preview"><SpecialtyForm key={ws.profile.versionId} schema={schema} initial={{}} readOnly /></Card>
-      </div>
+      </div>}
     </>
   );
 }
