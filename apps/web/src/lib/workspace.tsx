@@ -3,15 +3,16 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useRouter } from 'next/navigation';
 import { ApiError, get, setActiveOrg, wsUrl } from './api';
 
-export interface Me { user: { id: string; email: string; full_name: string; interface_language: string; theme: string; mfa_enabled: boolean }; workspaces: { organization_id: string; name: string; kind: string; membership_id: string; role_code: string; specialty_code: string | null; status: string }[] }
+export interface Me { user: { id: string; email: string; full_name: string; interface_language: string; theme: string; mfa_enabled: boolean; is_platform_admin?: boolean }; workspaces: { organization_id: string; name: string; kind: string; membership_id: string; role_code: string; specialty_code: string | null; status: string }[] }
 export interface OrgInfo {
   organization: { id: string; kind: 'independent_practice' | 'medical_center'; name: string; phone: string | null; email: string | null; address: string | null; default_language: string; timezone: string };
   locations: { id: string; name: string; address: string | null }[]; rooms: { id: string; name: string; location_id: string }[]; departments: { id: string; name: string }[];
   me: { memberships: { id: string; role_code: string; specialty_code: string | null }[]; permissions: string[]; actingDoctors: string[]; orgWide: boolean; doctorMembershipId: string | null };
+  plan: { code: string; status: string; effectiveStatus: string; usable: boolean; features: Record<string, boolean> };
 }
 export interface LiveEvent { type: string; event?: string; appointment_id?: string; doctor_membership_id?: string; kind?: string; conversation_id?: string }
 
-interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; reload: () => Promise<void>; live: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void }
+interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; feature: (f: string) => boolean; reload: () => Promise<void>; live: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void }
 const Ctx = createContext<WS>(null as any);
 
 export function WorkspaceProvider({ orgId, children }: { orgId: string; children: ReactNode }) {
@@ -51,7 +52,7 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
 
   if (error) return <div className="p-10 text-danger">{error}</div>;
   if (!state) return <div className="p-10 text-muted">…</div>;
-  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), reload, live, subscribe }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), feature: (f) => state.org.plan?.features?.[f] === true, reload, live, subscribe }}>{children}</Ctx.Provider>;
 }
 export const useWorkspace = () => useContext(Ctx);
 

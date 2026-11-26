@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 
 export default function WorkspaceSettings() {
-  const { t } = useI18n(); const { org, can, reload } = useWorkspace();
+  const { t } = useI18n(); const { org, can, reload, feature } = useWorkspace();
   const o = org.organization;
   const [f, setF] = useState({ name: o.name, phone: o.phone ?? '', email: o.email ?? '', address: o.address ?? '', defaultLanguage: o.default_language, timezone: o.timezone });
   const [err, setErr] = useState<unknown>(null); const [ok, setOk] = useState(false); const [busy, setBusy] = useState(false);
@@ -44,7 +44,7 @@ export default function WorkspaceSettings() {
             <form className="mt-5 flex gap-2 border-t border-line pt-4" onSubmit={(e) => { e.preventDefault(); if (loc) run(() => post('/org/locations', { name: loc }).then(() => setLoc(''))); }}>
               <Input placeholder={`${t('locations')}…`} value={loc} onChange={(e) => setLoc(e.target.value)} /><Button variant="secondary">{t('add')}</Button></form>
           </Card>
-          {o.kind === 'medical_center' && <Card title={t('departments')}>
+          {o.kind === 'medical_center' && feature('departments') && <Card title={t('departments')}>
             <ul className="mb-3 flex flex-wrap gap-1.5">{org.departments.map((d) => <li key={d.id} className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs text-brand">{d.name}</li>)}</ul>
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (dep) run(() => post('/org/departments', { name: dep }).then(() => setDep(''))); }}>
               <Input placeholder={`${t('departments')}…`} value={dep} onChange={(e) => setDep(e.target.value)} /><Button variant="secondary">{t('add')}</Button></form>

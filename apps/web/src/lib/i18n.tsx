@@ -4,6 +4,7 @@ import { CLINICAL } from './i18n-clinical';
 import { FINANCE } from './i18n-finance';
 import { COMM } from './i18n-comm';
 import { PORTAL } from './i18n-portal';
+import { COMMERCIAL } from './i18n-commercial';
 
 export type Lang = 'en' | 'ar' | 'fr';
 type Dict = Record<string, string>;
@@ -26,7 +27,7 @@ const en: Dict = {
   dateOfBirth: 'Date of birth', sex: 'Sex', female: 'Female', male: 'Male', other: 'Other', patientNumber: 'Patient ID',
   whatsapp: 'WhatsApp', emergencyContact: 'Emergency contact', bloodType: 'Blood type', allergies: 'Allergies',
   chronicDiseases: 'Chronic diseases', currentMedications: 'Current medications', medicalHistory: 'Previous medical history',
-  nationalId: 'Identification number', language: 'Language', doctor: 'Doctor', patient: 'Patient', service: 'Service', duration: 'Duration (min)',
+  nationalId: 'Identification number', language: 'Language', doctor: 'Doctor', allDoctors: 'All doctors', patient: 'Patient', service: 'Service', duration: 'Duration (min)',
   start: 'Start', room: 'Room', notes: 'Notes', recurrence: 'Repeat', noRepeat: 'Does not repeat', weekly: 'Weekly', daily: 'Daily', times: 'times',
   overview: 'Overview', timeline: 'Timeline', appointments: 'Appointments', personal: 'Personal information', possibleDuplicate: 'Possible duplicate',
   duplicateHelp: 'A patient with similar details already exists in this workspace. Check before creating a new file.',
@@ -57,7 +58,7 @@ const fr: Dict = {
   dateOfBirth: 'Date de naissance', sex: 'Sexe', female: 'Femme', male: 'Homme', other: 'Autre', patientNumber: 'N° patient',
   whatsapp: 'WhatsApp', emergencyContact: "Contact d'urgence", bloodType: 'Groupe sanguin', allergies: 'Allergies',
   chronicDiseases: 'Maladies chroniques', currentMedications: 'Traitements en cours', medicalHistory: 'Antécédents médicaux',
-  nationalId: "Numéro d'identité", language: 'Langue', doctor: 'Médecin', patient: 'Patient', service: 'Prestation', duration: 'Durée (min)',
+  nationalId: "Numéro d'identité", language: 'Langue', doctor: 'Médecin', allDoctors: 'Tous les médecins', patient: 'Patient', service: 'Prestation', duration: 'Durée (min)',
   start: 'Début', room: 'Salle', notes: 'Notes', recurrence: 'Répéter', noRepeat: 'Ne se répète pas', weekly: 'Chaque semaine', daily: 'Chaque jour', times: 'fois',
   overview: 'Aperçu', timeline: 'Chronologie', appointments: 'Rendez-vous', personal: 'Informations personnelles', possibleDuplicate: 'Doublon possible',
   duplicateHelp: 'Un patient aux informations similaires existe déjà. Vérifiez avant de créer un nouveau dossier.',
@@ -88,7 +89,7 @@ const ar: Dict = {
   dateOfBirth: 'تاريخ الميلاد', sex: 'الجنس', female: 'أنثى', male: 'ذكر', other: 'آخر', patientNumber: 'رقم المريض',
   whatsapp: 'واتساب', emergencyContact: 'جهة اتصال للطوارئ', bloodType: 'فصيلة الدم', allergies: 'الحساسية',
   chronicDiseases: 'الأمراض المزمنة', currentMedications: 'الأدوية الحالية', medicalHistory: 'التاريخ الطبي السابق',
-  nationalId: 'رقم الهوية', language: 'اللغة', doctor: 'الطبيب', patient: 'المريض', service: 'الخدمة', duration: 'المدة (دقيقة)',
+  nationalId: 'رقم الهوية', language: 'اللغة', doctor: 'الطبيب', allDoctors: 'كل الأطباء', patient: 'المريض', service: 'الخدمة', duration: 'المدة (دقيقة)',
   start: 'البداية', room: 'الغرفة', notes: 'ملاحظات', recurrence: 'تكرار', noRepeat: 'بدون تكرار', weekly: 'أسبوعيًا', daily: 'يوميًا', times: 'مرات',
   overview: 'نظرة عامة', timeline: 'التسلسل الزمني', appointments: 'المواعيد', personal: 'المعلومات الشخصية', possibleDuplicate: 'تكرار محتمل',
   duplicateHelp: 'يوجد مريض ببيانات مشابهة في مساحة العمل هذه. تحقّق قبل إنشاء ملف جديد.',
@@ -101,7 +102,7 @@ const ar: Dict = {
   noPermission: 'ليست لديك صلاحية لعرض هذا.', acceptInvitation: 'قبول الدعوة', invitedAs: 'أنت مدعو بصفة',
   resetPassword: 'إعادة تعيين كلمة المرور', newPassword: 'كلمة مرور جديدة', liveConnected: 'مباشر', liveOffline: 'إعادة الاتصال…', freeSlots: 'أوقات متاحة',
 };
-const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar } };
+const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en, ...COMMERCIAL.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr, ...COMMERCIAL.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar, ...COMMERCIAL.ar } };
 
 export const STATUS_LABEL: Record<Lang, Record<string, string>> = {
   en: { scheduled: 'Scheduled', confirmed: 'Confirmed', arrived: 'Arrived', waiting: 'Waiting', in_consultation: 'In consultation', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' },

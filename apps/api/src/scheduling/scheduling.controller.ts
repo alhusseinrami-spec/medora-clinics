@@ -246,14 +246,16 @@ export class SchedulingController {
     if (d) assertActsFor(c, d);
     return this.db.tx(c, async (t) => {
       const scope = `a.organization_id=$1 AND ($2::uuid IS NULL OR a.doctor_membership_id=$2)`;
-      const day = `(a.starts_at AT TIME ZONE o.timezone)::date = (now() AT TIME ZONE o.timezone)::date`;
+      // Sargable day window in the org time zone (lets the (organization_id, starts_at) index work).
+      const tz = await t.one(`SELECT date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start FROM organizations WHERE id=$1`, [c.orgId]);
+      const day = `a.starts_at >= $3::timestamptz AND a.starts_at < $3::timestamptz + interval '1 day'`;
       const r = await t.one(`SELECT
-          (SELECT count(*)::int FROM appointments a JOIN organizations o ON o.id=a.organization_id WHERE ${scope} AND ${day} AND a.status NOT IN ('cancelled')) AS patients_today,
+          (SELECT count(*)::int FROM appointments a WHERE ${scope} AND ${day} AND a.status NOT IN ('cancelled')) AS patients_today,
           (SELECT count(*)::int FROM appointments a WHERE ${scope} AND a.status IN ('arrived','waiting')) AS waiting,
-          (SELECT count(*)::int FROM appointments a JOIN organizations o ON o.id=a.organization_id WHERE ${scope} AND ${day} AND a.status = 'completed') AS completed_today,
+          (SELECT count(*)::int FROM appointments a WHERE ${scope} AND ${day} AND a.status = 'completed') AS completed_today,
           (SELECT count(*)::int FROM appointments a WHERE ${scope} AND a.status='scheduled' AND a.starts_at BETWEEN now() AND now() + interval '2 days') AS pending_confirmations,
           (SELECT count(*)::int FROM patients p WHERE p.organization_id=$1 AND p.created_at > now() - interval '30 days'
-             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM patient_memberships pm WHERE pm.patient_id=p.id AND pm.membership_id=$2))) AS new_patients`, [c.orgId, d]);
+             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM patient_memberships pm WHERE pm.patient_id=p.id AND pm.membership_id=$2))) AS new_patients`, [c.orgId, d, tz.day_start]);
       const next = await t.one(`${APPT_SELECT} WHERE a.organization_id=$1 AND ($2::uuid IS NULL OR a.doctor_membership_id=$2) AND a.starts_at > now() AND a.status IN ('scheduled','confirmed') ORDER BY a.starts_at LIMIT 1`, [c.orgId, d]);
       // Specialty widgets backed by specialty profile data (RLS: only rows the caller may read).
       const vaccinationsDue = c.permissions.has('patient.history.read') ? await t.q(`SELECT p.id AS patient_id, p.full_name, dose->>'vaccine' AS vaccine, (dose->>'next_due')::date AS due

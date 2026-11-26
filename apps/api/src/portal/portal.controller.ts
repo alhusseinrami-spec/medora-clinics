@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { Db } from '../db/db.service.js';
 import { config } from '../config.js';
-import { Auth, Ctx, Public, RequirePerm } from '../common/decorators.js';
+import { Auth, Ctx, Public, RequirePerm, RequireFeature } from '../common/decorators.js';
 import type { AuthInfo, TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -115,7 +115,7 @@ export class PortalStaffController {
   }
 
   /** Creates a portal invitation. Email delivery is not connected, so the link is returned for staff to share (e.g. on WhatsApp). */
-  @RequirePerm('patient.register') @Post('patients/:id/portal/invitations')
+  @RequireFeature('patient_app') @RequirePerm('patient.register') @Post('patients/:id/portal/invitations')
   invite(@Param('id') pid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ email: v.email() }, body);
     return this.db.tx(c, async (t) => {
