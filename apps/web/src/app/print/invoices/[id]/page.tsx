@@ -21,7 +21,8 @@ export default function PrintInvoice({ params, searchParams }: { params: Promise
     <div className="no-print mb-6 flex justify-end"><button onClick={() => window.print()} className="rounded-[10px] bg-[#115D62] px-4 py-2 text-sm font-medium text-white">{t('print')}</button></div>
     <header className="flex items-start justify-between border-b-2 border-[#115D62] pb-4">
       <div><p className="text-lg font-semibold">{inv.organization_name}</p>{inv.organization_address && <p>{inv.organization_address}</p>}
-        {inv.organization_phone && <p>{inv.organization_phone}</p>}{inv.organization_email && <p>{inv.organization_email}</p>}</div>
+        {inv.organization_phone && <p>{inv.organization_phone}</p>}{inv.organization_email && <p>{inv.organization_email}</p>}
+        {(inv.organization_legal_name || inv.organization_tax_id) && <p>{[inv.organization_legal_name, inv.organization_tax_id && `${t('taxId')} ${inv.organization_tax_id}`].filter(Boolean).join(' · ')}</p>}</div>
       <div className="text-end"><p className="text-2xl font-semibold text-[#115D62]">{inv.kind === 'credit_note' ? t('creditNote') : t('invoice')}</p>
         <p className="font-mono">{invoiceLabel(inv, t)}</p><p>{inv.issued_at ? d(inv.issued_at) : t('draft')}</p>
         {inv.credit_for_number && <p>{t('invoiceNo')} INV-{String(inv.credit_for_number).padStart(6, '0')}</p>}</div>

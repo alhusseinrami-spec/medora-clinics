@@ -12,7 +12,7 @@ export default function Team() {
   const { t, role } = useI18n(); const { org, can, me } = useWorkspace();
   const { data: members, reload } = useLoad<Member[]>('/staff');
   const { data: invites, reload: reloadInv } = useLoad<any[]>(can('staff.manage') ? '/staff/invitations' : null);
-  const [inviteOpen, setInviteOpen] = useState(false); const [permFor, setPermFor] = useState<Member | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false); const [permFor, setPermFor] = useState<Member | null>(null); const [docFor, setDocFor] = useState<any>(null);
   const doctors = (members ?? []).filter((m) => m.role_code === 'doctor');
   const name = (id: string) => doctors.find((d) => d.id === id)?.full_name ?? '—';
   const canEditPerms = (m: Member) => m.user_id !== me.user.id && (can('staff.manage') ? can('permission.manage') : can('permission.manage') && m.assists.includes(org.me.doctorMembershipId ?? ''));
@@ -23,11 +23,13 @@ export default function Team() {
         {!members ? <p className="text-muted">{t('loading')}</p> : <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead className="text-xs uppercase text-muted"><tr><th className="py-2 text-start">{t('fullName')}</th><th className="text-start">{t('role')}</th><th className="text-start">{t('assignTo')}</th><th className="text-start">{t('status')}</th><th /></tr></thead>
           <tbody className="divide-y divide-line">{members.map((m) => <tr key={m.id}>
-            <td className="py-2.5"><p className="font-medium">{m.full_name}</p><p className="text-xs text-muted">{m.email ?? ''}{m.specialty_code ? ` · ${m.specialty_code}` : ''}</p></td>
+            <td className="py-2.5"><p className="font-medium">{m.full_name}</p><p className="text-xs text-muted">{m.email ?? ''}{m.specialty_code ? ` · ${m.specialty_code}` : ''}</p>
+              {m.role_code === 'doctor' && <p className="text-xs text-muted tabular">{[(m as any).license_number && `${t('orderRegNo')} ${(m as any).license_number}`, (m as any).nssf_provider_number && `${t('nssfProviderNo')} ${(m as any).nssf_provider_number}`, (m as any).note_template === 'soap' && 'SOAP'].filter(Boolean).join(' · ')}</p>}</td>
             <td>{role(m.role_code)}</td>
             <td className="text-xs">{m.assists.map(name).join(', ') || '—'}</td>
             <td><Badge status={m.status === 'active' ? 'completed' : 'cancelled'}>{t(m.status)}</Badge></td>
             <td className="space-x-1 text-end whitespace-nowrap">
+              {m.role_code === 'doctor' && can('staff.manage') && <Button size="sm" variant="ghost" onClick={() => setDocFor(m)}>{t('edit')}</Button>}
               {canEditPerms(m) && <Button size="sm" variant="secondary" onClick={() => setPermFor(m)}>{t('permissions')}</Button>}
               {can('staff.manage') && m.user_id !== me.user.id && <Button size="sm" variant="ghost" onClick={async () => { await patch(`/staff/${m.id}`, { status: m.status === 'active' ? 'suspended' : 'active' }); reload(); }}>{m.status === 'active' ? 'Suspend' : 'Reactivate'}</Button>}
             </td></tr>)}</tbody></table></div>}
@@ -40,6 +42,7 @@ export default function Team() {
       </Card>}
       <InviteDialog open={inviteOpen} onClose={() => { setInviteOpen(false); reloadInv(); }} doctors={doctors} />
       {permFor && <PermissionsDialog m={permFor} onClose={() => { setPermFor(null); reload(); }} />}
+      {docFor && <DoctorDialog m={docFor} onClose={() => { setDocFor(null); reload(); }} />}
     </>
   );
 }
@@ -94,5 +97,25 @@ function PermissionsDialog({ m, onClose }: { m: Member; onClose: () => void }) {
     })}</ul>
     <div className="mt-4"><ErrorNote error={err} /></div>
     <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>{t('cancel')}</Button><Button busy={busy} onClick={save}>{t('save')}</Button></div>
+  </Dialog>;
+}
+
+/** A doctor's registration numbers (printed on prescriptions and invoices) and their consultation note template. */
+function DoctorDialog({ m, onClose }: { m: any; onClose: () => void }) {
+  const { t } = useI18n();
+  const [f, setF] = useState({ licenseNumber: m.license_number ?? '', nssfProviderNumber: m.nssf_provider_number ?? '', noteTemplate: m.note_template ?? 'standard' });
+  const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const save = async () => { setBusy(true); setErr(null);
+    try { await patch(`/staff/${m.id}`, { licenseNumber: f.licenseNumber || null, nssfProviderNumber: f.nssfProviderNumber || null, noteTemplate: f.noteTemplate }); onClose(); }
+    catch (e) { setErr(e); } finally { setBusy(false); } };
+  return <Dialog open onClose={onClose} title={m.full_name}>
+    <div className="grid gap-3">
+      <Field label={t('orderRegNo')}><Input value={f.licenseNumber} onChange={(e) => setF({ ...f, licenseNumber: e.target.value })} /></Field>
+      <Field label={t('nssfProviderNo')}><Input value={f.nssfProviderNumber} onChange={(e) => setF({ ...f, nssfProviderNumber: e.target.value })} /></Field>
+      <Field label={t('noteTemplate')}><Select value={f.noteTemplate} onChange={(e) => setF({ ...f, noteTemplate: e.target.value })}>
+        <option value="standard">{t('noteStandard')}</option><option value="soap">{t('noteSoap')}</option></Select></Field>
+      <ErrorNote error={err} />
+      <div className="flex justify-end"><Button busy={busy} onClick={save}>{t('save')}</Button></div>
+    </div>
   </Dialog>;
 }

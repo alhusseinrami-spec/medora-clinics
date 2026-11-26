@@ -17,6 +17,9 @@ const VITALS: [string, string, string, number][] = [
   ['bp_systolic', 'bp', 'mmHg', 1], ['bp_diastolic', 'bp', 'mmHg', 1], ['pulse', 'pulse', 'bpm', 1], ['temperature_c', 'temperature', '°C', 0.1],
   ['spo2', 'spo2', '%', 1], ['resp_rate', 'respRate', '/min', 1], ['weight_kg', 'weight', 'kg', 0.1], ['height_cm', 'height', 'cm', 0.1],
 ];
+/** With the SOAP note template, sections are labelled Subjective, Objective, Assessment and Plan. */
+const SOAP: Record<string, string> = { chiefComplaint: 'subjective', examinationNotes: 'objective', clinicalNotes: 'subjective', treatmentPlan: 'plan', diagnoses: 'assessment', vitalSigns: 'objective' };
+const soapLabel = (c: any, key: string, t: (k: string) => string) => (c.note_template === 'soap' && SOAP[key] ? `${t(SOAP[key]).charAt(0).toUpperCase()} · ${t(SOAP[key])} · ${t(key)}` : t(key));
 const TEXTS: [string, string, string][] = [
   ['chiefComplaint', 'chief_complaint', 'chiefComplaint'], ['examination', 'examination', 'examinationNotes'], ['clinicalNotes', 'clinical_notes', 'clinicalNotes'],
   ['treatmentPlan', 'treatment_plan', 'treatmentPlan'], ['followUpInstructions', 'follow_up_instructions', 'followUpInstructions'],
@@ -87,16 +90,16 @@ function NotesCard({ c, editable, onSaved }: { c: any; editable: boolean; onSave
   };
   if (!editable) return <Card title={t('consultation')}>
     {c.vital_signs && <p className="mb-3 text-sm tabular">{VITALS.filter(([k]) => c.vital_signs[k] != null).map(([k, l, u]) => `${t(l)} ${c.vital_signs[k]} ${u}`).join(' · ')}</p>}
-    <dl className="space-y-3 text-sm">{TEXTS.map(([, col, l]) => c[col] && <div key={col}><dt className="text-muted">{t(l)}</dt><dd className="whitespace-pre-wrap">{c[col]}</dd></div>)}
+    <dl className="space-y-3 text-sm">{TEXTS.map(([, col, l]) => c[col] && <div key={col}><dt className="text-muted">{soapLabel(c, l, t)}</dt><dd className="whitespace-pre-wrap">{c[col]}</dd></div>)}
       {c.follow_up_date && <div><dt className="text-muted">{t('followUpDate')}</dt><dd>{c.follow_up_date}</dd></div>}</dl>
   </Card>;
   return <Card title={t('consultation')}>
     <div className="space-y-4">
-      <Field label={t('chiefComplaint')}><Textarea rows={2} value={f.chiefComplaint} onChange={(e) => setF({ ...f, chiefComplaint: e.target.value })} /></Field>
-      <div><p className="mb-1.5 text-sm font-medium">{t('vitalSigns')}</p>
+      <Field label={soapLabel(c, 'chiefComplaint', t)}><Textarea rows={2} value={f.chiefComplaint} onChange={(e) => setF({ ...f, chiefComplaint: e.target.value })} /></Field>
+      <div><p className="mb-1.5 text-sm font-medium">{soapLabel(c, 'vitalSigns', t)}</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{VITALS.map(([k, l, u, step]) => <label key={k} className="text-xs text-muted">{t(l)}{k.startsWith('bp_') ? (k === 'bp_systolic' ? ' (sys)' : ' (dia)') : ''} · {u}
           <Input type="number" step={step} value={f.vitals[k] ?? ''} onChange={(e) => setF({ ...f, vitals: { ...f.vitals, [k]: e.target.value } })} /></label>)}</div></div>
-      {TEXTS.slice(1).map(([k, , l]) => <Field key={k} label={t(l)}><Textarea rows={k === 'clinicalNotes' ? 5 : 3} value={(f as any)[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>)}
+      {TEXTS.slice(1).map(([k, , l]) => <Field key={k} label={soapLabel(c, l, t)}><Textarea rows={k === 'clinicalNotes' ? 5 : 3} value={(f as any)[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>)}
       <Field label={t('followUpDate')} className="max-w-xs"><Input type="date" value={f.followUpDate} onChange={(e) => setF({ ...f, followUpDate: e.target.value })} /></Field>
       <div className="flex items-center justify-end gap-3"><ErrorNote error={err} />{ok && <span className="text-sm text-success">{t('saved')}</span>}<Button busy={busy} onClick={save}>{t('save')}</Button></div>
     </div>
@@ -107,14 +110,14 @@ function DiagnosesCard({ c, editable, onSaved }: { c: any; editable: boolean; on
   const { t } = useI18n();
   const [rows, setRows] = useState<{ code: string; description: string; isPrimary: boolean }[]>(() => c.diagnoses.map((d: any) => ({ code: d.code ?? '', description: d.description, isPrimary: d.is_primary })));
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null); const [ok, setOk] = useState(false);
-  if (!editable) return <Card title={t('diagnoses')}>{c.diagnoses.length ? <ul className="space-y-1 text-sm">{c.diagnoses.map((d: any) => <li key={d.id}>
+  if (!editable) return <Card title={soapLabel(c, 'diagnoses', t)}>{c.diagnoses.length ? <ul className="space-y-1 text-sm">{c.diagnoses.map((d: any) => <li key={d.id}>
     {d.code && <span className="me-2 font-mono text-xs text-muted">{d.code}</span>}{d.description}{d.is_primary && <Badge className="ms-2">{t('primary')}</Badge>}</li>)}</ul> : <p className="text-sm text-muted">—</p>}</Card>;
   const save = async () => {
     setBusy(true); setErr(null); setOk(false);
     try { onSaved(await put(`/consultations/${c.id}/diagnoses`, { diagnoses: rows.filter((r) => r.description.trim()).map((r) => ({ code: r.code.trim() || null, description: r.description.trim(), isPrimary: r.isPrimary })) })); setOk(true); }
     catch (e) { setErr(e); } finally { setBusy(false); }
   };
-  return <Card title={t('diagnoses')}>
+  return <Card title={soapLabel(c, 'diagnoses', t)}>
     <div className="space-y-2">{rows.map((r, i) => <div key={i} className="grid items-center gap-2 sm:grid-cols-[140px_1fr_auto_auto]">
       <Input value={r.code} placeholder={t('icdCode')} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, code: e.target.value } : x)))} />
       <Input value={r.description} placeholder={t('diagnosis')} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))} />

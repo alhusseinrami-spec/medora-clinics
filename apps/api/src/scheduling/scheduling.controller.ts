@@ -2,7 +2,7 @@ import { BadRequestException, Body, ConflictException, Controller, Delete, Forbi
 import { randomUUID } from 'node:crypto';
 import { APPOINTMENT_STATUSES, RESCHEDULABLE, canTransition, expandRecurrence, type AppointmentStatus } from '@medora/shared';
 import { Db, Tx } from '../db/db.service.js';
-import { Auth, Ctx, RequirePerm, Tenant } from '../common/decorators.js';
+import { Auth, Ctx, RequireAnyPerm, RequirePerm, Tenant } from '../common/decorators.js';
 import type { AuthInfo, TenantInfo } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
@@ -18,7 +18,7 @@ function assertActsFor(c: TenantInfo, doctor: string) {
 const APPT_SELECT = `SELECT a.id, a.patient_id, p.full_name AS patient_name, p.patient_number, p.phone AS patient_phone,
     a.doctor_membership_id, du.full_name AS doctor_name, a.starts_at, a.ends_at, a.status, a.is_walk_in, a.notes,
     a.service_id, s.name AS service_name, a.room_id, r.name AS room_name, a.location_id, a.department_id,
-    a.recurrence_rule, a.arrived_at, a.called_at, a.completed_at, a.cancelled_reason, a.created_at
+    a.recurrence_rule, a.arrived_at, a.called_at, a.completed_at, a.cancelled_reason, a.created_at, a.overbook_reason
   FROM appointments a JOIN patients p ON p.id=a.patient_id
   JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id
   LEFT JOIN services s ON s.id=a.service_id LEFT JOIN rooms r ON r.id=a.room_id`;
@@ -76,18 +76,25 @@ export class SchedulingController {
     });
   }
 
-  @RequirePerm('appointment.manage') @Post('availability/exceptions')
+  @RequireAnyPerm('appointment.manage', 'org.manage') @Post('availability/exceptions')
   addException(@Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ doctorMembershipId: v.uuid(), kind: v.enum('break', 'holiday', 'leave'), startsAt: v.datetime(), endsAt: v.datetime() }, body);
     assertActsFor(c, b.doctorMembershipId);
     if (b.endsAt <= b.startsAt) throw new BadRequestException('End must be after start');
-    return this.db.tx(c, (t) => t.one(`INSERT INTO availability_exceptions(membership_id,kind,during) VALUES ($1,$2,tstzrange($3,$4)) RETURNING id, kind, lower(during) AS starts_at, upper(during) AS ends_at`,
-      [b.doctorMembershipId, b.kind, b.startsAt, b.endsAt]));
+    return this.db.tx(c, async (t) => { await this.assertMayEditAbsences(t, c); return t.one(`INSERT INTO availability_exceptions(membership_id,kind,during) VALUES ($1,$2,tstzrange($3,$4)) RETURNING id, kind, lower(during) AS starts_at, upper(during) AS ends_at`,
+      [b.doctorMembershipId, b.kind, b.startsAt, b.endsAt]); });
   }
 
-  @RequirePerm('appointment.manage') @Delete('availability/exceptions/:id')
+  /** With "doctors manage their own absences" off, only owners and admins (org.manage) add or remove absences. */
+  private async assertMayEditAbsences(t: Tx, c: TenantInfo) {
+    if (c.permissions.has('org.manage')) return;
+    const o = await t.one(`SELECT doctors_manage_absences FROM organizations WHERE id=$1`, [c.orgId]);
+    if (!o?.doctors_manage_absences) throw new ForbiddenException('Only the clinic owner or an admin can change absences in this workspace');
+  }
+
+  @RequireAnyPerm('appointment.manage', 'org.manage') @Delete('availability/exceptions/:id')
   async deleteException(@Param('id') eid: string, @Ctx() c: TenantInfo) {
-    const r = await this.db.tx(c, (t) => t.q(`DELETE FROM availability_exceptions WHERE id=$1 RETURNING id`, [id(eid)]));
+    const r = await this.db.tx(c, async (t) => { await this.assertMayEditAbsences(t, c); return t.q(`DELETE FROM availability_exceptions WHERE id=$1 RETURNING id`, [id(eid)]); });
     if (!r.length) throw new NotFoundException();
     return { ok: true };
   }
@@ -141,7 +148,9 @@ export class SchedulingController {
       patientId: v.uuid(), doctorMembershipId: v.uuid(), startsAt: v.datetime(), durationMinutes: v.int(5, 480).optional(),
       serviceId: v.uuid().optional(), roomId: v.uuid().optional(), locationId: v.uuid().optional(), departmentId: v.uuid().optional(),
       notes: v.str(1, 2000).optional(), recurrence: v.str(5, 100).optional(), status: v.enum('scheduled', 'confirmed').optional(),
+      overbookReason: v.str(3, 300).optional(),
     }, body);
+    if (b.overbookReason && b.recurrence) throw new BadRequestException('A recurring series cannot be overbooked');
     assertActsFor(c, b.doctorMembershipId);
     let offsets = [0];
     if (b.recurrence) { try { offsets = expandRecurrence(b.recurrence); } catch (e: any) { throw new BadRequestException(e.message); } }
@@ -160,13 +169,14 @@ export class SchedulingController {
       for (const off of offsets) {
         const aid = randomUUID();
         const start = new Date(Date.parse(b.startsAt) + off * DAY);
-        await t.q(`INSERT INTO appointments(id,organization_id,doctor_membership_id,patient_id,starts_at,ends_at,service_id,room_id,location_id,department_id,notes,recurrence_rule,status,created_by)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        await t.q(`INSERT INTO appointments(id,organization_id,doctor_membership_id,patient_id,starts_at,ends_at,service_id,room_id,location_id,department_id,notes,recurrence_rule,status,created_by,overbook_reason)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
           [aid, c.orgId, b.doctorMembershipId, b.patientId, start.toISOString(), new Date(start.getTime() + minutes * 60000).toISOString(),
-            b.serviceId ?? null, b.roomId ?? null, b.locationId ?? null, b.departmentId ?? doc.department_id ?? null, b.notes ?? null, b.recurrence ?? null, b.status ?? 'scheduled', c.userId]);
+            b.serviceId ?? null, b.roomId ?? null, b.locationId ?? null, b.departmentId ?? doc.department_id ?? null, b.notes ?? null, b.recurrence ?? null, b.status ?? 'scheduled', c.userId, b.overbookReason ?? null]);
         ids.push(aid);
       }
       await audit(t, c.userId, c.orgId, 'appointment.create', 'appointment', ids[0], { count: ids.length, patient: b.patientId });
+      if (b.overbookReason) await audit(t, c.userId, c.orgId, 'appointment.overbook', 'appointment', ids[0], { reason: b.overbookReason });
       await queueAppointmentEvent(t, 'confirmation', ids[0]);   // one message for a recurring series: the first visit
       const rows = await t.q(`${APPT_SELECT} WHERE a.id = ANY($1) ORDER BY a.starts_at`, [ids]);
       return ids.length === 1 ? rows[0] : { appointments: rows };
@@ -201,7 +211,7 @@ export class SchedulingController {
   @RequirePerm('appointment.manage') @Patch('appointments/:id')
   update(@Param('id') aid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ startsAt: v.datetime().optional(), durationMinutes: v.int(5, 480).optional(), roomId: v.uuid().nullable(), serviceId: v.uuid().nullable(),
-      notes: v.str(1, 2000).nullable(), doctorMembershipId: v.uuid().optional() }, body);
+      notes: v.str(1, 2000).nullable(), doctorMembershipId: v.uuid().optional(), overbookReason: v.str(3, 300).optional() }, body);
     return this.db.tx(c, async (t) => {
       const a = await this.getAppt(t, id(aid));
       const timeChange = b.startsAt !== undefined || b.durationMinutes !== undefined || b.doctorMembershipId !== undefined;
@@ -211,8 +221,11 @@ export class SchedulingController {
       const mins = b.durationMinutes ?? Math.round((Date.parse(a.ends_at) - Date.parse(a.starts_at)) / 60000);
       const end = new Date(Date.parse(start) + mins * 60000).toISOString();
       const pick = <T>(x: T | undefined, cur: T) => (x === undefined ? cur : x);
-      const r = await t.q(`UPDATE appointments SET starts_at=$2, ends_at=$3, room_id=$4, service_id=$5, notes=$6, doctor_membership_id=$7 WHERE id=$1 RETURNING id`,
-        [a.id, start, end, pick(b.roomId, a.room_id), pick(b.serviceId, a.service_id), pick(b.notes, a.notes), b.doctorMembershipId ?? a.doctor_membership_id]);
+      // A reschedule clears an earlier overbooking mark unless a new reason is given.
+      const overbook = b.overbookReason ?? (timeChange ? null : a.overbook_reason);
+      const r = await t.q(`UPDATE appointments SET starts_at=$2, ends_at=$3, room_id=$4, service_id=$5, notes=$6, doctor_membership_id=$7, overbook_reason=$8 WHERE id=$1 RETURNING id`,
+        [a.id, start, end, pick(b.roomId, a.room_id), pick(b.serviceId, a.service_id), pick(b.notes, a.notes), b.doctorMembershipId ?? a.doctor_membership_id, overbook]);
+      if (b.overbookReason) await audit(t, c.userId, c.orgId, 'appointment.overbook', 'appointment', a.id, { reason: b.overbookReason });
       if (!r.length) throw new ForbiddenException('Not allowed to change this appointment');
       await audit(t, c.userId, c.orgId, timeChange ? 'appointment.reschedule' : 'appointment.update', 'appointment', a.id,
         timeChange ? { from: a.starts_at, to: start } : { fields: Object.keys(b) });
@@ -235,6 +248,26 @@ export class SchedulingController {
       await audit(t, c.userId, c.orgId, 'appointment.status', 'appointment', a.id, { from: a.status, to: b.status });
       if (b.status === 'cancelled') await queueAppointmentEvent(t, 'cancellation', a.id);
       return this.getAppt(t, a.id);
+    });
+  }
+
+  /**
+   * The printed day sheet: one day's appointments for the front desk, in the workspace time zone. Phone numbers
+   * are left out unless the owner switched "print phone numbers on the day sheet" on (a sheet can be lost).
+   */
+  @RequirePerm('appointment.manage') @Get('day-sheet')
+  daySheet(@Ctx() c: TenantInfo, @Query('date') date: string, @Query('doctor') doctor?: string) {
+    const q = parse({ date: v.date(), doctor: v.uuid().optional() }, { date, doctor });
+    return this.db.tx(c, async (t) => {
+      const org = await t.one(`SELECT name, phone, address, timezone, day_sheet_phones FROM organizations WHERE id=$1`, [c.orgId]);
+      const rows = await t.q(`${APPT_SELECT} WHERE a.organization_id=$1 AND a.status NOT IN ('cancelled')
+          AND (a.starts_at AT TIME ZONE $3)::date = $2::date AND ($4::uuid IS NULL OR a.doctor_membership_id=$4)
+        ORDER BY du.full_name, a.starts_at`, [c.orgId, q.date, org.timezone, q.doctor ?? null]);
+      await audit(t, c.userId, c.orgId, 'appointment.day_sheet', 'organization', c.orgId, { date: q.date, phones: org.day_sheet_phones });
+      return {
+        date: q.date, timezone: org.timezone, organization: { name: org.name, phone: org.phone, address: org.address }, phones: org.day_sheet_phones,
+        appointments: rows.map((r) => ({ ...r, patient_phone: org.day_sheet_phones ? r.patient_phone : undefined, notes: undefined })),
+      };
     });
   }
 

@@ -8,7 +8,7 @@ All data in this repository is synthetic. Passwords in this README and in the co
 
 ## Layout
 ```
-db/                 migrations (001-011), migrate.js, sync_presets.js, smoke_test.js, rls_test.js, seed_synthetic.mjs
+db/                 migrations (001-012), migrate.js, sync_presets.js, smoke_test.js, rls_test.js, seed_synthetic.mjs
 packages/shared/    permissions, role defaults, appointment status machine, specialty template engine + presets
 apps/api/           NestJS API (port 4000, prefix /api, WebSocket /ws) + end-to-end tests
 apps/web/           Next.js + Tailwind web app / PWA (port 3000, proxies /api to the API)

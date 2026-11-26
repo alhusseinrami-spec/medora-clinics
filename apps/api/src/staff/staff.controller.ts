@@ -21,7 +21,7 @@ export class StaffController {
     const canSeePerms = c.permissions.has('permission.manage') || c.permissions.has('staff.manage');
     return this.db.tx(c, async (t) => {
       const rows = await t.q(`SELECT m.id, m.user_id, u.full_name, u.email, m.role_code, m.specialty_code, m.department_id, m.title,
-          m.license_number, m.consultation_fee, m.status, m.created_at,
+          m.license_number, m.nssf_provider_number, m.note_template, m.consultation_fee, m.status, m.created_at,
           COALESCE((SELECT array_agg(permission_code ORDER BY permission_code) FROM membership_permissions WHERE membership_id=m.id), '{}') AS permissions,
           COALESCE((SELECT array_agg(doctor_membership_id) FROM assistant_assignments WHERE assistant_membership_id=m.id), '{}') AS assists
         FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 ORDER BY m.role_code, u.full_name`, [c.orgId]);
@@ -78,7 +78,8 @@ export class StaffController {
   @RequirePerm('staff.manage') @Patch(':id')
   async updateMember(@Param('id') mid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
     const b = parse({ status: v.enum('active', 'suspended').optional(), consultationFee: v.num(0, 1e7).nullable(), departmentId: v.uuid().nullable(),
-      title: v.str(1, 80).nullable(), specialty: v.str(2, 40).optional(), licenseNumber: v.str(2, 60).nullable() }, body);
+      title: v.str(1, 80).nullable(), specialty: v.str(2, 40).optional(), licenseNumber: v.str(2, 60).nullable(),
+      nssfProviderNumber: v.str(2, 60).nullable(), noteTemplate: v.enum('standard', 'soap').optional() }, body);
     return this.db.tx(c, async (t) => {
       const m = await t.one(`SELECT * FROM memberships WHERE id=$1 AND organization_id=$2`, [id(mid), c.orgId]);
       if (!m) throw new NotFoundException();
@@ -88,10 +89,12 @@ export class StaffController {
         if (owners.n <= 1) throw new BadRequestException('A center needs at least one active owner');
       }
       const pick = <T>(val: T | undefined, cur: T) => (val === undefined ? cur : val);
-      const r = await t.one(`UPDATE memberships SET status=$2, consultation_fee=$3, department_id=$4, title=$5, specialty_code=$6, license_number=$7 WHERE id=$1
-        RETURNING id, role_code, status, consultation_fee, department_id, title, specialty_code, license_number`,
+      const r = await t.one(`UPDATE memberships SET status=$2, consultation_fee=$3, department_id=$4, title=$5, specialty_code=$6, license_number=$7,
+        nssf_provider_number=$8, note_template=$9 WHERE id=$1
+        RETURNING id, role_code, status, consultation_fee, department_id, title, specialty_code, license_number, nssf_provider_number, note_template`,
         [m.id, pick(b.status, m.status), pick(b.consultationFee, m.consultation_fee), pick(b.departmentId, m.department_id), pick(b.title, m.title),
-          pick(b.specialty, m.specialty_code), pick(b.licenseNumber, m.license_number)]);
+          pick(b.specialty, m.specialty_code), pick(b.licenseNumber, m.license_number),
+          pick(b.nssfProviderNumber, m.nssf_provider_number), pick(b.noteTemplate, m.note_template)]);
       await audit(t, c.userId, c.orgId, 'membership.update', 'membership', m.id, b);
       return r;
     });

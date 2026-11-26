@@ -5,7 +5,9 @@ import { ApiError, get, setActiveOrg, wsUrl } from './api';
 
 export interface Me { user: { id: string; email: string; full_name: string; interface_language: string; theme: string; mfa_enabled: boolean; is_platform_admin?: boolean }; workspaces: { organization_id: string; name: string; kind: string; membership_id: string; role_code: string; specialty_code: string | null; status: string }[] }
 export interface OrgInfo {
-  organization: { id: string; kind: 'independent_practice' | 'medical_center'; name: string; phone: string | null; email: string | null; address: string | null; default_language: string; timezone: string };
+  organization: { id: string; kind: 'independent_practice' | 'medical_center'; name: string; phone: string | null; email: string | null; address: string | null; default_language: string; timezone: string;
+    legal_name?: string | null; tax_id?: string | null; share_patients_between_doctors?: boolean; allow_overbooking?: boolean; doctors_manage_absences?: boolean;
+    day_sheet_phones?: boolean; message_window_start?: string; message_window_end?: string };
   locations: { id: string; name: string; address: string | null }[]; rooms: { id: string; name: string; location_id: string }[]; departments: { id: string; name: string }[];
   me: { memberships: { id: string; role_code: string; specialty_code: string | null }[]; permissions: string[]; actingDoctors: string[]; orgWide: boolean; doctorMembershipId: string | null };
   plan: { code: string; status: string; effectiveStatus: string; usable: boolean; features: Record<string, boolean> };

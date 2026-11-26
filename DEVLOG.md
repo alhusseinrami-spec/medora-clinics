@@ -2,6 +2,21 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-26 · Release 8a: clinic functions matched to ITIG Clinic (part 1 of 4)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 7 of 7, API end-to-end 77 of 77 with 9 new). Web production build passes. Browser check with synthetic data: settings, outstanding balances, prescriptions, calendar, day sheet and emergency access screens open with no console errors.
+
+| Item | Status |
+|---|---|
+| 012 migration: clinic rules on the workspace (patient sharing between doctors, overbooking, doctors manage absences, phones on the day sheet, message hours), legal name and tax ID, doctor Order and NSSF numbers, note template | Tested |
+| Outstanding balances: list of patients who owe, since when, collected and forgiven this month; forgive a balance (all or part) with a reason, shown on the invoice | Tested |
+| Clinic-wide prescription list with search and status tabs; each prescription prints in English, French or Arabic; Order and NSSF numbers on the printout | Tested |
+| Emergency access: a doctor opens one patient they cannot normally see, by exact patient number or phone, with a reason; access lasts 12 hours, is audited and listed for the owner | Tested |
+| Message hours: reminders and other automatic WhatsApp messages leave only inside the clinic's hours, in its time zone | Tested |
+| Deliberate overbooking with a reason, when the clinic allows it; marked on the calendar | Tested |
+| Printed day sheet per doctor, for working through an outage | Tested |
+| SOAP note template per doctor | Implemented |
+
 ## 2026-11-25 · Release 7: launch readiness (security, performance, backups, packaging)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 7 of 7, API end-to-end 68 of 68 with 12 new security and permission tests). Web production build passes. Browser smoke test: 170 checks passed on the development servers and 140 on the Docker stack (desktop, Android and iPhone screen sizes, English and Arabic, every role).

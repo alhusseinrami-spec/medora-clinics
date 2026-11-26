@@ -108,6 +108,35 @@ export class FinanceController {
     });
   }
 
+  // ---------- Outstanding balances ----------
+  /**
+   * What patients still owe. Money not yet received is tracked here and never counted as income. "Collected"
+   * and "forgiven" cover the current calendar month in the workspace time zone. Amounts are in USD equivalent
+   * at the rate saved on each transaction; a doctor in a center sees their own invoices only.
+   */
+  @RequireAnyPerm('payment.register', 'finance.view') @Get('receivables')
+  receivables(@Ctx() c: TenantInfo) {
+    const usd = (amt: string, cur: string, rate: string) => `CASE WHEN ${cur}='USD' THEN ${amt} ELSE ${amt} / ${rate} END`;
+    return this.db.tx(c, async (t) => {
+      const month = await t.one(`SELECT date_trunc('month', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS start FROM organizations WHERE id=$1`, [c.orgId]);
+      const collected = await t.one(`SELECT coalesce(sum(${usd('p.amount', 'p.currency', 'p.lbp_per_usd')}), 0) AS amount
+        FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE p.organization_id=$1 AND p.received_at >= $2`, [c.orgId, month.start]);
+      const forgiven = await t.one(`SELECT coalesce(sum(${usd('w.amount', 'i.currency', 'i.lbp_per_usd')}), 0) AS amount
+        FROM balance_writeoffs w JOIN invoices i ON i.id=w.invoice_id WHERE w.organization_id=$1 AND w.created_at >= $2`, [c.orgId, month.start]);
+      const patients = await t.q(`SELECT p.id AS patient_id, p.full_name AS patient_name, p.patient_number, p.phone,
+          sum(${usd('b.balance', 'i.currency', 'i.lbp_per_usd')}) AS owed, count(*)::int AS invoices, min(i.issued_at) AS owed_since,
+          sum(b.balance) FILTER (WHERE i.currency='USD') AS owed_usd, sum(b.balance) FILTER (WHERE i.currency='LBP') AS owed_lbp
+        FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id JOIN patients p ON p.id=i.patient_id
+        WHERE i.organization_id=$1 AND i.status='issued' AND i.kind='invoice' AND b.balance > 0.004
+        GROUP BY p.id ORDER BY owed DESC LIMIT 500`, [c.orgId]);
+      const n = (x: any) => round2(Number(x ?? 0));
+      const rows = patients.map((p) => ({ ...p, owed: n(p.owed), owed_usd: n(p.owed_usd), owed_lbp: n(p.owed_lbp),
+        months: Math.max(0, Math.floor((Date.now() - Date.parse(p.owed_since)) / (30.44 * 86400e3))) }));
+      return { currency: 'USD', monthStart: month.start, collectedThisMonth: n(collected.amount), forgivenThisMonth: n(forgiven.amount),
+        stillOwed: round2(rows.reduce((s, r) => s + r.owed, 0)), patients: rows, scope: c.orgWide ? 'workspace' : 'own' };
+    });
+  }
+
   // ---------- Reports ----------
   /**
    * Financial overview for a period. Every amount is converted to USD with the rate frozen on its own
@@ -141,10 +170,12 @@ export class FinanceController {
       const byMethod = await t.q(`SELECT p.method_code, pm.name, p.currency, sum(p.amount) AS amount FROM payments p JOIN payment_methods pm ON pm.code=p.method_code
         JOIN invoices i ON i.id=p.invoice_id WHERE p.organization_id=$1 AND p.received_at >= $2::date AND p.received_at < $3::date + 1
         GROUP BY p.method_code, pm.name, p.currency ORDER BY pm.name, p.currency`, P);
-      const outstanding = await t.one(`SELECT coalesce(sum(${usd('(b.total - b.credited - b.paid)', 'i.currency', 'i.lbp_per_usd')}), 0) AS amount,
+      const outstanding = await t.one(`SELECT coalesce(sum(${usd('b.balance', 'i.currency', 'i.lbp_per_usd')}), 0) AS amount,
           count(*)::int AS invoices
         FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id
-        WHERE i.organization_id=$1 AND i.status='issued' AND i.kind='invoice' AND b.total - b.credited - b.paid > 0.004`, [c.orgId]);
+        WHERE i.organization_id=$1 AND i.status='issued' AND i.kind='invoice' AND b.balance > 0.004`, [c.orgId]);
+      const forgiven = await t.one(`SELECT coalesce(sum(${usd('w.amount', 'i.currency', 'i.lbp_per_usd')}), 0) AS amount
+        FROM balance_writeoffs w JOIN invoices i ON i.id=w.invoice_id WHERE w.organization_id=$1 AND w.created_at >= $2::date AND w.created_at < $3::date + 1`, P);
       const expenses = await t.one(`SELECT coalesce(sum(${usd('e.amount', 'e.currency', 'e.lbp_per_usd')}), 0) AS total,
           coalesce(sum(${usd('e.amount', 'e.currency', 'e.lbp_per_usd')}) FILTER (WHERE e.membership_id IS NULL), 0) AS shared
         FROM expenses e WHERE e.organization_id=$1 AND e.deleted_at IS NULL AND e.spent_at BETWEEN $2::date AND $3::date`, P);
@@ -188,7 +219,7 @@ export class FinanceController {
         revenueByKind: Object.fromEntries(byKind.map((k) => [k.kind, n(k.amount)])),
         received: { total: receivedTotal, patients: n(received.patients), insurance: n(received.insurance), refunds: n(received.refunds),
           cashUsd: n(received.cash_usd), cashLbp: n(received.cash_lbp), byMethod: byMethod.map((m) => ({ ...m, amount: n(m.amount) })) },
-        outstanding: { amount: n(outstanding.amount), invoices: outstanding.invoices },
+        outstanding: { amount: n(outstanding.amount), invoices: outstanding.invoices }, forgiven: n(forgiven.amount),
         expenses: { total: exp, shared: n(expenses.shared), byCategory: expensesByCategory.map((e) => ({ ...e, amount: n(e.amount) })) },
         net: round2(receivedTotal - exp),
         center: c.orgKind === 'medical_center' && c.orgWide ? { share: round2(centerShare + orphanCollected), sharedExpenses: n(expenses.shared), net: round2(centerShare + orphanCollected - n(expenses.shared)) } : null,

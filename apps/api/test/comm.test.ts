@@ -82,6 +82,8 @@ before(async () => {
   other.org = o.body.organizationId;
   const p = await dr.post('/patients', { fullName: 'Synthetic Patient Maha', phone: '03 123 456', preferredLanguage: 'en', confirmNotDuplicate: true });
   assert.equal(p.status, 201, JSON.stringify(p.body)); ids.patient = p.body.id;
+  // Tests run at any hour: open the message window all day (the window itself is tested below).
+  assert.equal((await dr.patch('/org', { messageWindowStart: '00:00', messageWindowEnd: '23:59' })).status, 200);
 });
 after(async () => { await server.close(); meta.close(); });
 
@@ -258,4 +260,25 @@ test('free-text replies are refused once the 24-hour window has closed', async (
   await c.end();
   const r = await dr.post(`/whatsapp/conversations/${ids.conv}/reply`, { body: 'Hello again' });
   assert.equal(r.status, 409); assert.equal(r.body.code, 'window_closed');
+});
+
+test('message hours: nothing goes out outside the clinic message window; it waits and leaves once the window opens', async () => {
+  const pg = require('pg');
+  const c = new pg.Client(process.env.DATABASE_URL || 'postgres://medora:medora_dev@localhost:5432/medora');
+  await c.connect();
+  // A window that starts two hours from now (clinic time) is closed right now.
+  const { s, e } = (await c.query(`SELECT to_char((now() AT TIME ZONE 'Asia/Beirut') + interval '2 hours', 'HH24:MI') s,
+    to_char((now() AT TIME ZONE 'Asia/Beirut') + interval '3 hours', 'HH24:MI') e`)).rows[0];
+  await c.end();
+  if (e > s) {   // skip the few minutes around midnight where the window would wrap
+    assert.equal((await dr.patch('/org', { messageWindowStart: s, messageWindowEnd: e })).status, 200);
+    const before = sent.length;
+    const m = await dr.post(`/patients/${ids.patient}/messages`, { purpose: 'announcement', message: 'Synthetic: closed tomorrow.', invoiceId: null, consultationId: null, date: null });
+    assert.equal(m.body.status, 'pending', 'held until the window opens');
+    assert.equal(sent.length, before);
+    await dr.patch('/org', { messageWindowStart: '00:00', messageWindowEnd: '23:59' });
+    await tick();
+    const q = (await dr.get(`/patients/${ids.patient}/messages`)).body.find((x: any) => x.id === m.body.id);
+    assert.notEqual(q.status, 'pending');
+  }
 });

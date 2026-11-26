@@ -2,15 +2,16 @@
 import { use, useEffect, useState } from 'react';
 import { Logo } from '@/components/ui';
 import { get, setActiveOrg } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
+import { translator, useI18n, type Lang } from '@/lib/i18n';
 
 /**
  * Printable prescription (A5-friendly). "Save as PDF" in the browser's print dialog produces the PDF.
  * Draft and cancelled prescriptions are watermarked so they cannot be passed off as valid.
  */
-export default function PrintPrescription({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ org?: string }> }) {
-  const { id } = use(params); const { org } = use(searchParams);
-  const { t, lang, dir } = useI18n();
+export default function PrintPrescription({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ org?: string; lang?: string }> }) {
+  const { id } = use(params); const { org, lang: forced } = use(searchParams);
+  // ?lang=fr prints the prescription in another language than the user's own (EN, FR or AR).
+  const own = useI18n(); const { t, lang, dir } = forced && ['en', 'fr', 'ar'].includes(forced) ? translator(forced as Lang) : own;
   const [rx, setRx] = useState<any>(null); const [err, setErr] = useState<string | null>(null);
   useEffect(() => { setActiveOrg(org ?? null); get(`/prescriptions/${id}`).then(setRx).catch((e) => setErr(e.message)); }, [id, org]);
   useEffect(() => { if (rx?.status === 'issued') setTimeout(() => window.print(), 300); }, [rx]);
@@ -26,7 +27,7 @@ export default function PrintPrescription({ params, searchParams }: { params: Pr
     </div>
     <header className="flex items-start justify-between border-b-2 border-[#115D62] pb-3">
       <div><p className="text-lg font-semibold">{rx.doctor_name}</p><p className="capitalize">{rx.specialty_code?.replace(/_/g, ' ')}</p>
-        {rx.license_number && <p>{t('licence')}: {rx.license_number}</p>}</div>
+        {rx.license_number && <p>{t('orderRegNo')}: {rx.license_number}</p>}{rx.nssf_provider_number && <p>{t('nssfProviderNo')}: {rx.nssf_provider_number}</p>}</div>
       <div className="text-end"><p className="font-semibold">{rx.organization_name}</p>{rx.organization_address && <p>{rx.organization_address}</p>}{rx.organization_phone && <p>{rx.organization_phone}</p>}</div>
     </header>
     <section className="mt-4 flex justify-between">

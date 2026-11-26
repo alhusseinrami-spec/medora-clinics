@@ -52,6 +52,23 @@ export class PatientsController {
     return this.db.tx(c, (t) => t.q(`SELECT * FROM app_find_duplicate_patients($1,$2,$3)`, [b.fullName, b.phone ?? null, b.dateOfBirth ?? null]));
   }
 
+  /**
+   * Emergency access: a doctor covering for a colleague opens a file that is private to another doctor, for
+   * 12 hours, by naming the patient exactly (patient number or phone) and giving a reason. Recorded and
+   * shown to the clinic's owners and admins.
+   */
+  @RequirePerm('clinical_notes.read') @Post('emergency-access')
+  emergency(@Body() body: unknown, @Ctx() c: TenantInfo) {
+    const b = parse({ query: v.str(3, 40), reason: v.str(5, 500) }, body);
+    if (!c.doctorMembershipId) throw new ForbiddenException('Only doctors can open a file in an emergency');
+    return this.db.tx(c, async (t) => {
+      const r = await t.one(`SELECT app_emergency_open($1, $2) AS id`, [b.query, b.reason]);
+      if (!r?.id) throw new NotFoundException('No single patient matches that patient number or phone');
+      const p = await t.one(`SELECT id, full_name, patient_number FROM patients WHERE id=$1`, [r.id]);
+      return { ...p, expiresInHours: 12 };
+    });
+  }
+
   /** Registers a patient and links them to the treating doctor. Possible duplicates must be confirmed first. */
   @RequirePerm('patient.register') @Post()
   create(@Body() body: unknown, @Ctx() c: TenantInfo) {

@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { CLINICAL } from './i18n-clinical';
 import { FINANCE } from './i18n-finance';
+import { CLINIC } from './i18n-clinic';
 import { COMM } from './i18n-comm';
 import { PORTAL } from './i18n-portal';
 import { COMMERCIAL } from './i18n-commercial';
@@ -102,7 +103,7 @@ const ar: Dict = {
   noPermission: 'ليست لديك صلاحية لعرض هذا.', acceptInvitation: 'قبول الدعوة', invitedAs: 'أنت مدعو بصفة',
   resetPassword: 'إعادة تعيين كلمة المرور', newPassword: 'كلمة مرور جديدة', liveConnected: 'مباشر', liveOffline: 'إعادة الاتصال…', freeSlots: 'أوقات متاحة',
 };
-const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en, ...COMMERCIAL.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr, ...COMMERCIAL.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar, ...COMMERCIAL.ar } };
+const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en, ...COMMERCIAL.en, ...CLINIC.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr, ...COMMERCIAL.fr, ...CLINIC.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar, ...COMMERCIAL.ar, ...CLINIC.ar } };
 
 export const STATUS_LABEL: Record<Lang, Record<string, string>> = {
   en: { scheduled: 'Scheduled', confirmed: 'Confirmed', arrived: 'Arrived', waiting: 'Waiting', in_consultation: 'In consultation', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' },
@@ -130,3 +131,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={{ lang, setLang, t, dir: lang === 'ar' ? 'rtl' : 'ltr', status: (s) => STATUS_LABEL[lang][s] ?? s, role: (r) => ROLE_LABEL[lang][r] ?? r }}>{children}</Ctx.Provider>;
 }
 export const useI18n = () => useContext(Ctx);
+
+/** Translator for a fixed language, for printed papers in a language other than the user's own. */
+export function translator(lang: Lang) {
+  return { lang, t: (k: string) => DICTS[lang][k] ?? DICTS.en[k] ?? k, dir: (lang === 'ar' ? 'rtl' : 'ltr') as 'ltr' | 'rtl' };
+}

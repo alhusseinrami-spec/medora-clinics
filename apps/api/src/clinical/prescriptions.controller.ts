@@ -64,6 +64,23 @@ export class PrescriptionsController {
     });
   }
 
+  /** Clinic-wide list (newest first) of the prescriptions the caller may see, with search by patient or medication. */
+  @RequirePerm('prescription.view') @Get('prescriptions')
+  listAll(@Ctx() c: TenantInfo, @Query() q: Record<string, string>) {
+    const f = parse({ status: v.enum('draft', 'issued', 'cancelled').optional(), doctor: v.uuid().optional(), q: v.str(1, 80).optional(),
+      from: v.date().optional(), to: v.date().optional() }, q);
+    return this.db.tx(c, (t) => t.q(`SELECT r.id, r.status, r.created_at, r.issued_at, r.cancelled_at, r.patient_id, p.full_name AS patient_name, p.patient_number,
+        r.prescribed_by, u.full_name AS doctor_name, r.shared_with_patient,
+        (SELECT coalesce(json_agg(json_build_object('name', i.medication_name, 'dosage', i.dosage, 'frequency', i.frequency) ORDER BY i.position), '[]')
+           FROM prescription_items i WHERE i.prescription_id=r.id) AS items
+      FROM prescriptions r JOIN patients p ON p.id=r.patient_id JOIN memberships m ON m.id=r.prescribed_by JOIN users u ON u.id=m.user_id
+      WHERE r.organization_id=$1 AND ($2::text IS NULL OR r.status=$2) AND ($3::uuid IS NULL OR r.prescribed_by=$3)
+        AND ($4::text IS NULL OR lower(p.full_name) LIKE '%' || lower($4) || '%' OR upper(p.patient_number) = upper($4)
+             OR EXISTS (SELECT 1 FROM prescription_items i WHERE i.prescription_id=r.id AND lower(i.medication_name) LIKE '%' || lower($4) || '%'))
+        AND ($5::date IS NULL OR r.created_at >= $5::date) AND ($6::date IS NULL OR r.created_at < $6::date + 1)
+      ORDER BY r.created_at DESC LIMIT 200`, [c.orgId, f.status ?? null, f.doctor ?? null, f.q ?? null, f.from ?? null, f.to ?? null]));
+  }
+
   @RequirePerm('prescription.view') @Get('prescriptions/:id')
   get(@Param('id') rid: string, @Ctx() c: TenantInfo) {
     return this.db.tx(c, async (t) => {
@@ -206,7 +223,7 @@ export class PrescriptionsController {
   async load(t: Tx, rid: string) {
     const r = await t.one(`SELECT r.id, r.status, r.notes, r.created_at, r.issued_at, r.cancelled_at, r.cancel_reason, r.shared_with_patient, r.shared_at,
         r.consultation_id, r.patient_id, r.prescribed_by,
-        u.full_name AS doctor_name, m.specialty_code, m.license_number, o.name AS organization_name, o.kind AS organization_kind,
+        u.full_name AS doctor_name, m.specialty_code, m.license_number, m.nssf_provider_number, o.name AS organization_name, o.kind AS organization_kind,
         o.phone AS organization_phone, o.address AS organization_address,
         p.full_name AS patient_name, p.patient_number, p.date_of_birth, p.sex, p.allergies
       FROM prescriptions r JOIN memberships m ON m.id=r.prescribed_by JOIN users u ON u.id=m.user_id

@@ -18,7 +18,7 @@ type Item = { description: string; quantity?: number; unitPrice: number; kind?: 
 const METHODS = ['cash', 'card', 'bank_transfer', 'whish', 'omt'] as const;
 const LIST_COLS = `i.id, i.kind, i.status, i.invoice_number, i.currency, i.lbp_per_usd, i.issued_at, i.created_at, i.patient_id, i.doctor_membership_id,
   i.credit_for_invoice_id, p.full_name AS patient_name, p.patient_number, du.full_name AS doctor_name,
-  b.total, b.credited, b.paid, round(b.total - b.credited - b.paid, 2) AS balance`;
+  b.total, b.credited, b.paid, b.forgiven, round(b.balance, 2) AS balance`;
 const LIST_FROM = `FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id JOIN patients p ON p.id=i.patient_id
   LEFT JOIN memberships dm ON dm.id=i.doctor_membership_id LEFT JOIN users du ON du.id=dm.user_id`;
 
@@ -33,7 +33,7 @@ export class InvoicesController {
     return this.db.tx(c, (t) => t.q(`SELECT ${LIST_COLS} ${LIST_FROM}
       WHERE i.organization_id=$1 AND ($2::text IS NULL OR i.status=$2) AND ($3::uuid IS NULL OR i.patient_id=$3) AND ($4::uuid IS NULL OR i.doctor_membership_id=$4)
         AND ($5::date IS NULL OR coalesce(i.issued_at, i.created_at) >= $5::date) AND ($6::date IS NULL OR coalesce(i.issued_at, i.created_at) < $6::date + 1)
-        AND ($7::text IS NULL OR (i.status='issued' AND i.kind='invoice' AND b.total - b.credited - b.paid > 0.004))
+        AND ($7::text IS NULL OR (i.status='issued' AND i.kind='invoice' AND b.balance > 0.004))
         AND ($8::text IS NULL OR i.kind=$8)
         AND ($9::text IS NULL OR lower(p.full_name) LIKE '%' || lower($9) || '%' OR i.invoice_number::text = $9 OR upper(p.patient_number) = upper($9))
       ORDER BY coalesce(i.issued_at, i.created_at) DESC LIMIT 300`,
@@ -145,7 +145,7 @@ export class InvoicesController {
     return this.db.tx(c, async (t) => {
       const inv = await this.mustLoad(t, uid(iid));
       if (inv.status !== 'issued' || inv.kind !== 'invoice') throw new ConflictException('Credit notes apply to issued invoices');
-      const creditable = round2(inv.total - inv.credited);
+      const creditable = round2(inv.total - inv.credited - inv.forgiven);
       if (b.amount > creditable + 0.004) throw new BadRequestException(`At most ${creditable} ${inv.currency} can be credited on this invoice`);
       const cn = await t.one(`INSERT INTO invoices(organization_id, patient_id, doctor_membership_id, department_id, currency, lbp_per_usd, kind, credit_for_invoice_id, notes, status, created_by, doctor_percent)
         VALUES ($1,$2,$3,$4,$5,$6,'credit_note',$7,$8,'draft',$9,$10) RETURNING id`,
@@ -153,6 +153,26 @@ export class InvoicesController {
       await t.q(`INSERT INTO invoice_items(invoice_id, description, unit_price, kind) VALUES ($1,$2,$3,'other')`, [cn.id, `Credit on invoice ${inv.invoice_number}: ${b.reason}`, b.amount]);
       await t.q(`UPDATE invoices SET status='issued', issued_by=$2 WHERE id=$1`, [cn.id, c.userId]);
       await audit(t, c.userId, c.orgId, 'invoice.credit_note', 'invoice', iid, { creditNote: cn.id, amount: b.amount, reason: b.reason });
+      return this.load(t, iid);
+    });
+  }
+
+  /**
+   * Forgives (part of) what the patient still owes. The amount leaves the outstanding balance but is never
+   * counted as income, and the record cannot be edited or removed. Needs the finance permission (owners, doctors, accountants).
+   */
+  @RequirePerm('finance.view') @Post('invoices/:id/write-offs')
+  writeOff(@Param('id') iid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
+    const b = parse({ reason: v.str(3, 500), amount: v.num(0.01, 1e12).optional() }, body);
+    return this.db.tx(c, async (t) => {
+      const inv = await this.mustLoad(t, uid(iid));
+      if (inv.status !== 'issued' || inv.kind !== 'invoice') throw new ConflictException('Only an issued invoice has a balance to forgive');
+      if (inv.balance <= 0.004) throw new ConflictException('Nothing is owed on this invoice');
+      const amount = b.amount ?? inv.balance;
+      if (amount > inv.balance + 0.004) throw new BadRequestException(`At most ${inv.balance} ${inv.currency} is owed on this invoice`);
+      const w = await t.one(`INSERT INTO balance_writeoffs(organization_id, invoice_id, amount, reason, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [c.orgId, iid, round2(amount), b.reason, c.userId]);
+      await audit(t, c.userId, c.orgId, 'invoice.write_off', 'invoice', iid, { writeOff: w.id, amount: round2(amount), currency: inv.currency, reason: b.reason });
       return this.load(t, iid);
     });
   }
@@ -235,10 +255,10 @@ export class InvoicesController {
   }
 
   private async mustLoad(t: Tx, iid: string) {
-    const r = await t.one(`SELECT i.*, b.total, b.credited, b.paid, b.covered_subtotal, round(b.total - b.credited - b.paid, 2) AS balance
+    const r = await t.one(`SELECT i.*, b.total, b.credited, b.paid, b.forgiven, b.covered_subtotal, round(b.balance, 2) AS balance
       FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id WHERE i.id=$1`, [iid]);
     if (!r) throw new NotFoundException('Invoice not found');
-    for (const k of ['total', 'credited', 'paid', 'covered_subtotal', 'balance', 'discount', 'tax', 'lbp_per_usd', 'doctor_percent']) if (r[k] != null) r[k] = Number(r[k]);
+    for (const k of ['total', 'credited', 'paid', 'forgiven', 'covered_subtotal', 'balance', 'discount', 'tax', 'lbp_per_usd', 'doctor_percent']) if (r[k] != null) r[k] = Number(r[k]);
     return r;
   }
 
@@ -246,8 +266,8 @@ export class InvoicesController {
   async load(t: Tx, iid: string) {
     const r = await this.mustLoad(t, iid);
     const extra = await t.one(`SELECT p.full_name AS patient_name, p.patient_number, p.phone AS patient_phone, p.address AS patient_address,
-        du.full_name AS doctor_name, dm.specialty_code, dm.license_number, d.name AS department_name,
-        o.name AS organization_name, o.phone AS organization_phone, o.address AS organization_address, o.email AS organization_email,
+        du.full_name AS doctor_name, dm.specialty_code, dm.license_number, dm.nssf_provider_number, d.name AS department_name,
+        o.name AS organization_name, o.phone AS organization_phone, o.address AS organization_address, o.email AS organization_email, o.legal_name AS organization_legal_name, o.tax_id AS organization_tax_id,
         cu.full_name AS created_by_name, iu.full_name AS issued_by_name, src.invoice_number AS credit_for_number
       FROM invoices i JOIN patients p ON p.id=i.patient_id JOIN organizations o ON o.id=i.organization_id
       LEFT JOIN memberships dm ON dm.id=i.doctor_membership_id LEFT JOIN users du ON du.id=dm.user_id LEFT JOIN departments d ON d.id=i.department_id
@@ -262,7 +282,9 @@ export class InvoicesController {
       t.q(`SELECT c.id, c.status, c.amount_claimed, c.amount_approved, ip.name AS provider_name FROM claims c JOIN insurance_policies pol ON pol.id=c.policy_id
            JOIN insurance_providers ip ON ip.id=pol.provider_id WHERE c.invoice_id=$1 ORDER BY c.created_at`, [iid]),
     ]);
+    const writeOffs = await t.q(`SELECT w.id, w.amount, w.reason, w.created_at, u.full_name AS created_by_name FROM balance_writeoffs w
+      LEFT JOIN users u ON u.id=w.created_by WHERE w.invoice_id=$1 ORDER BY w.created_at`, [iid]);
     const num = (x: any) => ({ ...x, ...Object.fromEntries(['quantity', 'unit_price', 'amount', 'lbp_per_usd', 'total', 'amount_claimed', 'amount_approved'].filter((k) => x[k] != null).map((k) => [k, Number(x[k])])) });
-    return { ...r, ...extra, items: items.map(num), payments: payments.map(num), creditNotes: creditNotes.map(num), claims: claims.map(num) };
+    return { ...r, ...extra, items: items.map(num), payments: payments.map(num), creditNotes: creditNotes.map(num), claims: claims.map(num), writeOffs: writeOffs.map(num) };
   }
 }

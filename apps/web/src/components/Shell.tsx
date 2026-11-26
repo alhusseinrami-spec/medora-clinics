@@ -25,6 +25,7 @@ export function Shell({ children }: { children: ReactNode }) {
     { href: `${base}/calendar`, label: t('calendar'), icon: '▦', show: can('appointment.manage') },
     { href: `${base}/waiting-room`, label: t('waitingRoom'), icon: '◷', show: can('appointment.manage') },
     { href: `${base}/patients`, label: t('patients'), icon: '◉', show: can('patient.file.read') },
+    { href: `${base}/prescriptions`, label: t('prescriptions'), icon: '℞', show: can('prescription.view') },
     { href: `${base}/messages`, label: t('messages'), icon: '✉', show: can('whatsapp.send') && feature('whatsapp') },
     { href: `${base}/billing`, label: t('billing'), icon: '▤', show: can('payment.register') || can('finance.view') },
     { href: `${base}/finance`, label: t('finance'), icon: '◔', show: can('finance.view') && feature('finance') },

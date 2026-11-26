@@ -187,7 +187,7 @@ export class ConsultationsController {
   }
 
   async load(t: Tx, cid: string) {
-    const r = await t.one(`SELECT c.*, u.full_name AS doctor_name, su.full_name AS signed_by_name,
+    const r = await t.one(`SELECT c.*, u.full_name AS doctor_name, m.note_template, su.full_name AS signed_by_name,
         p.full_name AS patient_name, p.patient_number, p.date_of_birth, p.sex, p.allergies
       FROM consultations c JOIN memberships m ON m.id=c.doctor_membership_id JOIN users u ON u.id=m.user_id
       JOIN patients p ON p.id=c.patient_id LEFT JOIN users su ON su.id=c.signed_by WHERE c.id=$1`, [cid]);
