@@ -123,7 +123,8 @@ await patientUser.post('/portal/requests', { patientId: pa[0].id, doctorMembersh
 // Commercial platform (Release 6): a MEDORA administrator (no workspace), a support request, a payment for the center,
 // and Dr Nour's own practice on the Solo plan. The admin account is made the way production does it: from the server.
 const { execFileSync } = await import('node:child_process');
-execFileSync(process.execPath, [new URL('./platform_admin.js', import.meta.url).pathname, 'create', 'admin@demo.medora', 'MEDORA Admin'], { env: { ...process.env, ADMIN_PASSWORD: PW }, stdio: 'ignore' });
+const { fileURLToPath } = await import('node:url');
+execFileSync(process.execPath, [fileURLToPath(new URL('./platform_admin.js', import.meta.url)), 'create', 'admin@demo.medora', 'MEDORA Admin'], { env: { ...process.env, ADMIN_PASSWORD: PW }, stdio: 'ignore' });
 const admin = new C(); await admin.post('/auth/login', { email: 'admin@demo.medora', password: PW });
 await admin.post(`/admin/workspaces/${center.organizationId}/payments`, { amount: 1490, currency: 'USD', method: 'bank_transfer', reference: 'SYN-DEMO-0001', months: 12 });
 await nourSolo.post('/subscription/plan', { plan: 'solo', cycle: 'monthly' });
