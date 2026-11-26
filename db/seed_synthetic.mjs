@@ -90,6 +90,16 @@ await maya.post('/appointments', { patientId: pa[1].id, doctorMembershipId: mKar
 await maya.post('/appointments', { patientId: pa[2].id, doctorMembershipId: mKarim, startsAt: at(2, 10), durationMinutes: 30 });
 for (const a of [a1, a2]) await lina.post(`/appointments/${a.id}/status`, { status: 'arrived' });
 
+// Prescriptions and a renewal request: Dr Karim's patient asked the front desk to renew a long-term prescription.
+const rxS = await karim.post('/prescriptions', { patientId: pa[0].id, notes: null, items: [
+  { medicationName: 'Synthetic Amlodipine 5 mg', dosage: '1 tablet', frequency: 'once daily', duration: '3 months', instructions: null, notes: null },
+  { medicationName: 'Synthetic Atorvastatin 20 mg', dosage: '1 tablet', frequency: 'at night', duration: '3 months', instructions: null, notes: null }] });
+await karim.post(`/prescriptions/${rxS.id}/issue`);
+const rxL = await nour.post('/prescriptions', { patientId: pk[0].id, notes: null, items: [
+  { medicationName: 'Synthetic Vitamin D drops', dosage: '400 IU', frequency: 'once daily', duration: '2 months', instructions: null, notes: null }] });
+await nour.post(`/prescriptions/${rxL.id}/issue`);
+await maya.post('/refills', { patientId: pa[0].id, note: 'Synthetic: running out of tablets next week' });
+
 // Finance (Release 3): exchange rates, a commission, an insurer, a policy, invoices, a payment, an expense and a claim
 await owner.post('/finance/rates', { lbpPerUsd: 89500, note: 'Synthetic demo rate' });
 const nourSolo = new C(); nourSolo.cookie = nour.cookie; nourSolo.org = solo.organizationId;

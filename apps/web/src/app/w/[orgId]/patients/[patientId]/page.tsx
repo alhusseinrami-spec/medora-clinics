@@ -56,6 +56,7 @@ export default function PatientFile({ params }: { params: Promise<{ patientId: s
           <Card title={t('doctor')} actions={can('patient.register') && org.organization.kind === 'medical_center' && <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>+ {t('add')}</Button>}>
             <ul className="space-y-1 text-sm">{p.doctors.map((d: any) => <li key={d.membership_id}>{d.full_name} <span className="text-muted">· {d.specialty_code}</span></li>)}</ul>
           </Card>
+          {(can('appointment.manage') || can('whatsapp.send') || can('prescription.view')) && <RefillCard patientId={patientId} />}
           {can('patient.file.read') && feature('patient_app') && <PatientAppAccess patientId={patientId} email={p.email ?? null} />}
         </div>}
         {tab === 'specialty' && <SpecialtyTab patientId={patientId} />}
@@ -171,4 +172,21 @@ function LinkDoctor({ open, onClose, patient, onDone }: { open: boolean; onClose
     <div className="mt-3"><ErrorNote error={err} /></div>
     <div className="mt-4 flex justify-end"><Button disabled={!d} onClick={async () => { try { onDone(await post(`/patients/${patient.id}/links`, { doctorMembershipId: d })); } catch (e) { setErr(e); } }}>{t('save')}</Button></div>
   </Dialog>;
+}
+
+/** Renewal requests for this patient; the front desk can ask the prescribing doctor to renew the latest prescription. */
+function RefillCard({ patientId }: { patientId: string }) {
+  const { t, lang } = useI18n(); const { orgId, can } = useWorkspace();
+  const { data, reload } = useLoad<any[]>(`/refills?patient=${patientId}`);
+  const [err, setErr] = useState<unknown>(null);
+  const ask = async () => { setErr(null); try { await post('/refills', { patientId, note: null }); reload(); } catch (e) { setErr(e); } };
+  const pending = (data ?? []).some((r) => r.status === 'pending');
+  return <Card title={t('refillRequests')} actions={!pending && <Button size="sm" variant="ghost" onClick={ask}>+ {t('askRenewal')}</Button>}>
+    <ErrorNote error={err} />
+    {!data ? null : data.length === 0 ? <p className="text-sm text-muted">{t('noRefills')}</p> :
+      <ul className="space-y-1 text-sm">{data.slice(0, 4).map((r) => <li key={r.id} className="flex justify-between gap-2">
+        <span>{fmtDate(r.created_at, lang)} · {r.doctor_name}</span>
+        {r.status === 'pending' && can('prescription.view') ? <Link className="text-brand hover:underline" href={`/w/${orgId}/prescriptions?tab=refills`}>{t('refill_pending')}</Link>
+          : <span className="text-muted">{t(`refill_${r.status}`)}</span>}</li>)}</ul>}
+  </Card>;
 }

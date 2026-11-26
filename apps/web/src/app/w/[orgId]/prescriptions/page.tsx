@@ -1,11 +1,11 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Input, Tabs, fmtDate } from '@/components/ui';
 import { Forbidden, PageTitle } from '@/components/Shell';
 import { PatientPicker } from '@/components/AppointmentDialog';
 import { PrescriptionEditor, newPrescription } from '@/components/PrescriptionEditor';
-import { get } from '@/lib/api';
+import { get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 import { useLoad } from '@/lib/hooks';
@@ -14,8 +14,10 @@ import { useLoad } from '@/lib/hooks';
 export default function Prescriptions() {
   const { t, lang } = useI18n(); const { can, orgId } = useWorkspace();
   const [tab, setTab] = useState('all'); const [q, setQ] = useState('');
+  useEffect(() => { const k = new URLSearchParams(window.location.search).get('tab'); if (k) setTab(k); }, []);
+  const refills = useLoad<any[]>('/refills?status=pending', [tab]);
   const [open, setOpen] = useState<any>(null); const [picking, setPicking] = useState(false); const [err, setErr] = useState<unknown>(null);
-  const params = new URLSearchParams({ ...(tab !== 'all' ? { status: tab } : {}), ...(q.trim().length > 1 ? { q: q.trim() } : {}) });
+  const params = new URLSearchParams({ ...(tab !== 'all' && tab !== 'refills' ? { status: tab } : {}), ...(q.trim().length > 1 ? { q: q.trim() } : {}) });
   const { data, error, reload } = useLoad<any[]>(`/prescriptions?${params}`, [tab, q]);
   if (!can('prescription.view')) return <Forbidden />;
   const edit = async (id: string) => { try { setOpen(await get(`/prescriptions/${id}`)); } catch (e) { setErr(e); } };
@@ -23,11 +25,12 @@ export default function Prescriptions() {
   return <>
     <PageTitle title={t('prescriptions')} actions={can('prescription.create') && <Button onClick={() => setPicking(true)}>+ {t('newPrescription')}</Button>} />
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <Tabs tabs={[{ key: 'all', label: t('all') }, { key: 'draft', label: t('drafts') }, { key: 'issued', label: t('locked') }, { key: 'cancelled', label: t('cancelledRx') }]} value={tab} onChange={setTab} />
-      <Input className="!w-64" placeholder={`${t('search')}…`} value={q} onChange={(e) => setQ(e.target.value)} />
+      <Tabs tabs={[{ key: 'all', label: t('all') }, { key: 'draft', label: t('drafts') }, { key: 'issued', label: t('locked') }, { key: 'cancelled', label: t('cancelledRx') },
+        { key: 'refills', label: `${t('refillRequests')}${refills.data?.length ? ` (${refills.data.length})` : ''}` }]} value={tab} onChange={setTab} />
+      {tab !== 'refills' && <Input className="!w-64" placeholder={`${t('search')}…`} value={q} onChange={(e) => setQ(e.target.value)} />}
     </div>
     <div className="mt-4"><ErrorNote error={error ?? err} /></div>
-    {!data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noPrescriptions')}</Empty> :
+    {tab === 'refills' ? <Refills onChange={() => { refills.reload(); reload(); }} /> : !data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noPrescriptions')}</Empty> :
       <div className="grid gap-4 md:grid-cols-2">{data.map((r) => <Card key={r.id}>
         <div className="flex items-start justify-between gap-3">
           <div><Link className="text-lg font-medium hover:underline" href={`/w/${orgId}/patients/${r.patient_id}`}>{r.patient_name}</Link>
@@ -56,4 +59,42 @@ function NewRx({ open, onClose, onCreated }: { open: boolean; onClose: () => voi
     <div className="mt-3"><ErrorNote error={err} /></div>
     <div className="mt-4 flex justify-end"><Button disabled={!patient} onClick={async () => { try { onCreated(await newPrescription(patient.id)); } catch (e) { setErr(e); } }}>{t('newPrescription')}</Button></div>
   </Dialog>;
+}
+
+/** Renewal requests: pending first. The prescribing doctor approves (a new issued prescription) or denies with a reason. */
+function Refills({ onChange }: { onChange: () => void }) {
+  const { t, lang } = useI18n(); const { org, orgId } = useWorkspace();
+  const { data, error, reload } = useLoad<any[]>('/refills');
+  const [denying, setDenying] = useState<any>(null); const [reason, setReason] = useState(''); const [err, setErr] = useState<unknown>(null); const [note, setNote] = useState<string | null>(null);
+  const done = (r: any) => { setNote(r.patientNotified ? t('refillPatientNotified') : t('refillTellPatient')); reload(); onChange(); };
+  const approve = async (id: string) => { setErr(null); try { done(await post(`/refills/${id}/approve`, { note: null })); } catch (e) { setErr(e); } };
+  const deny = async () => { setErr(null); try { done(await post(`/refills/${denying.id}/deny`, { reason })); setDenying(null); setReason(''); } catch (e) { setErr(e); } };
+  const badge = (s: string) => s === 'pending' ? <Badge status="draft">{t('refill_pending')}</Badge> : s === 'approved' ? <Badge status="completed">{t('refill_approved')}</Badge> : <Badge status="cancelled">{t('refill_denied')}</Badge>;
+  return <>
+    <ErrorNote error={error ?? err} />
+    {note && <p className="mb-3 rounded-[10px] bg-brand-soft p-3 text-sm text-brand">{note}</p>}
+    {!data ? <p className="text-muted">{t('loading')}</p> : data.length === 0 ? <Empty>{t('noRefills')}</Empty> :
+      <div className="grid gap-4 md:grid-cols-2">{data.map((r) => <Card key={r.id}>
+        <div className="flex items-start justify-between gap-3">
+          <div><Link className="text-lg font-medium hover:underline" href={`/w/${orgId}/patients/${r.patient_id}`}>{r.patient_name}</Link>
+            <p className="text-sm text-muted">{r.doctor_name} · {fmtDate(r.created_at, lang)} · {r.source === 'whatsapp' ? t('viaWhatsapp') : r.created_by_name}</p></div>
+          {badge(r.status)}
+        </div>
+        {r.note && <p className="mt-2 rounded-[10px] bg-surface px-3 py-2 text-sm">“{r.note}”</p>}
+        <ul className="mt-3 space-y-1 text-sm">{r.items.map((i: any, n: number) => <li key={n}><span className="font-medium">{i.name}</span>{(i.dosage || i.frequency) && <span className="text-muted"> — {[i.dosage, i.frequency].filter(Boolean).join(' · ')}</span>}</li>)}</ul>
+        {r.decision_note && <p className="mt-2 text-sm text-muted">{t('reason')}: {r.decision_note}</p>}
+        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-3 text-sm">
+          {r.status === 'pending' && r.doctor_membership_id === org.me.doctorMembershipId ? <>
+            <Button size="sm" onClick={() => approve(r.id)}>{t('approveRefill')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setDenying(r)}>{t('denyRefill')}</Button></>
+            : r.status === 'pending' ? <span className="text-muted">{t('refillWaitingDoctor')}</span> : null}
+          {r.new_prescription_id && <a className="ms-auto font-medium text-brand hover:underline" href={`/print/prescriptions/${r.new_prescription_id}?org=${orgId}`} target="_blank" rel="noopener">{t('print')}</a>}
+        </div>
+      </Card>)}</div>}
+    <Dialog open={!!denying} onClose={() => setDenying(null)} title={t('denyRefill')}>
+      <p className="mb-3 text-sm text-muted">{t('denyRefillHint')}</p>
+      <Field label={t('reason')}><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+      <div className="mt-4 flex justify-end"><Button disabled={reason.trim().length < 3} onClick={deny}>{t('denyRefill')}</Button></div>
+    </Dialog>
+  </>;
 }
