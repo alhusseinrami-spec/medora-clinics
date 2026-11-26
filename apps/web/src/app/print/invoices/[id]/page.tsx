@@ -18,11 +18,11 @@ export default function PrintInvoice({ params, searchParams }: { params: Promise
   const insurance = (inv.claims ?? []).filter((c: any) => c.status !== 'rejected').reduce((s: number, c: any) => s + Number(c.amount_approved ?? c.amount_claimed), 0);
   return <div dir={dir} className="mx-auto min-h-screen max-w-[210mm] bg-white p-10 text-[13px] text-black print:p-0">
     <style>{`@page { size: A4; margin: 15mm } @media print { .no-print { display: none } }`}</style>
-    <div className="no-print mb-6 flex justify-end"><button onClick={() => window.print()} className="rounded-[10px] bg-[#12636B] px-4 py-2 text-sm font-medium text-white">{t('print')}</button></div>
-    <header className="flex items-start justify-between border-b-2 border-[#12636B] pb-4">
+    <div className="no-print mb-6 flex justify-end"><button onClick={() => window.print()} className="rounded-[10px] bg-[#115D62] px-4 py-2 text-sm font-medium text-white">{t('print')}</button></div>
+    <header className="flex items-start justify-between border-b-2 border-[#115D62] pb-4">
       <div><p className="text-lg font-semibold">{inv.organization_name}</p>{inv.organization_address && <p>{inv.organization_address}</p>}
         {inv.organization_phone && <p>{inv.organization_phone}</p>}{inv.organization_email && <p>{inv.organization_email}</p>}</div>
-      <div className="text-end"><p className="text-2xl font-semibold text-[#12636B]">{inv.kind === 'credit_note' ? t('creditNote') : t('invoice')}</p>
+      <div className="text-end"><p className="text-2xl font-semibold text-[#115D62]">{inv.kind === 'credit_note' ? t('creditNote') : t('invoice')}</p>
         <p className="font-mono">{invoiceLabel(inv, t)}</p><p>{inv.issued_at ? d(inv.issued_at) : t('draft')}</p>
         {inv.credit_for_number && <p>{t('invoiceNo')} INV-{String(inv.credit_for_number).padStart(6, '0')}</p>}</div>
     </header>

@@ -16,10 +16,10 @@ export default function PrintReceipt({ params, searchParams }: { params: Promise
   const inv = p.invoice;
   return <div dir={dir} className="mx-auto min-h-screen max-w-[148mm] bg-white p-8 text-[13px] text-black print:p-0">
     <style>{`@page { size: A5; margin: 12mm } @media print { .no-print { display: none } }`}</style>
-    <div className="no-print mb-6 flex justify-end"><button onClick={() => window.print()} className="rounded-[10px] bg-[#12636B] px-4 py-2 text-sm font-medium text-white">{t('print')}</button></div>
-    <header className="flex items-start justify-between border-b-2 border-[#12636B] pb-3">
+    <div className="no-print mb-6 flex justify-end"><button onClick={() => window.print()} className="rounded-[10px] bg-[#115D62] px-4 py-2 text-sm font-medium text-white">{t('print')}</button></div>
+    <header className="flex items-start justify-between border-b-2 border-[#115D62] pb-3">
       <div><p className="font-semibold">{inv.organization_name}</p>{inv.organization_address && <p>{inv.organization_address}</p>}{inv.organization_phone && <p>{inv.organization_phone}</p>}</div>
-      <div className="text-end"><p className="text-lg font-semibold text-[#12636B]">{p.refund_of ? t('refunded') : t('receipt')}</p><p className="font-mono">{t('receiptNo')} {p.receipt_number}</p>
+      <div className="text-end"><p className="text-lg font-semibold text-[#115D62]">{p.refund_of ? t('refunded') : t('receipt')}</p><p className="font-mono">{t('receiptNo')} {p.receipt_number}</p>
         <p>{new Date(p.received_at).toLocaleString(lang === 'ar' ? 'ar-LB' : lang)}</p></div>
     </header>
     <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5">

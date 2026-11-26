@@ -2,26 +2,30 @@
 
 /* MEDORA CLINICS design tokens (architecture/brand/tokens.css). Light default, dark via data-theme or system. */
 :root {
-  --brand: #12636B; --brand-ink: #0B1B2B; --accent: #E8875B;
+  --brand: #115D62; --brand-ink: #0B1B2B; --accent: #EE6C5E; --brand-2: #1B9AA7;
   --surface: #F5F7F6; --card: #FFFFFF; --line: #E2E8E6; --muted: #5B6B73;
   --success: #2F9E6A; --warning: #C98A12; --danger: #C8413A; --info: #3B6FD8;
-  --brand-soft: #E3F0F0;
+  --brand-soft: #E2F0F1;
+  /* Logo colours, from the MEDORA Care logo. */
+  --logo-dark: #115D62; --logo-light: #1B9AA7; --logo-coral: #EE6C5E; --logo-ink: #115D62; --logo-sub: #1B9AA7;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --brand: #3FB7B5; --brand-ink: #E7EEF2; --accent: #F2A07A;
+    --brand: #2FB0BC; --brand-ink: #E7EEF2; --accent: #F2877A; --brand-2: #5CC6D0;
     --surface: #0A141C; --card: #111E28; --line: #22313C; --muted: #93A4AE;
     --success: #46C08A; --warning: #E3AE3F; --danger: #E26A62; --info: #7CA2F0; --brand-soft: #12303A;
+    --logo-dark: #E7EEF2; --logo-light: #1B9AA7; --logo-coral: #EE6C5E; --logo-ink: #FFFFFF; --logo-sub: #5CC6D0;
   }
 }
 [data-theme="dark"] {
-  --brand: #3FB7B5; --brand-ink: #E7EEF2; --accent: #F2A07A;
+  --brand: #2FB0BC; --brand-ink: #E7EEF2; --accent: #F2877A; --brand-2: #5CC6D0;
   --surface: #0A141C; --card: #111E28; --line: #22313C; --muted: #93A4AE;
   --success: #46C08A; --warning: #E3AE3F; --danger: #E26A62; --info: #7CA2F0; --brand-soft: #12303A;
+  --logo-dark: #E7EEF2; --logo-light: #1B9AA7; --logo-coral: #EE6C5E; --logo-ink: #FFFFFF; --logo-sub: #5CC6D0;
 }
 
 @theme inline {
-  --color-brand: var(--brand); --color-ink: var(--brand-ink); --color-accent: var(--accent);
+  --color-brand: var(--brand); --color-brand-2: var(--brand-2); --color-ink: var(--brand-ink); --color-accent: var(--accent);
   --color-surface: var(--surface); --color-card: var(--card); --color-line: var(--line); --color-muted: var(--muted);
   --color-success: var(--success); --color-warning: var(--warning); --color-danger: var(--danger); --color-info: var(--info);
   --color-brand-soft: var(--brand-soft);

@@ -22,9 +22,9 @@ export default function PrintPrescription({ params, searchParams }: { params: Pr
   return <div dir={dir} className="mx-auto min-h-screen max-w-[148mm] bg-white p-8 text-[13px] text-black print:p-0">
     <style>{`@page { size: A5; margin: 12mm } @media print { .no-print { display: none } body { background: white } }`}</style>
     <div className="no-print mb-6 flex justify-end gap-2">
-      <button onClick={() => window.print()} className="rounded-[10px] bg-[#12636B] px-4 py-2 text-sm font-medium text-white">{t('print')}</button>
+      <button onClick={() => window.print()} className="rounded-[10px] bg-[#115D62] px-4 py-2 text-sm font-medium text-white">{t('print')}</button>
     </div>
-    <header className="flex items-start justify-between border-b-2 border-[#12636B] pb-3">
+    <header className="flex items-start justify-between border-b-2 border-[#115D62] pb-3">
       <div><p className="text-lg font-semibold">{rx.doctor_name}</p><p className="capitalize">{rx.specialty_code?.replace(/_/g, ' ')}</p>
         {rx.license_number && <p>{t('licence')}: {rx.license_number}</p>}</div>
       <div className="text-end"><p className="font-semibold">{rx.organization_name}</p>{rx.organization_address && <p>{rx.organization_address}</p>}{rx.organization_phone && <p>{rx.organization_phone}</p>}</div>
@@ -34,7 +34,7 @@ export default function PrintPrescription({ params, searchParams }: { params: Pr
       <p>{d(rx.issued_at ?? rx.created_at)}</p>
     </section>
     {rx.allergies && <p className="mt-2"><span className="text-neutral-500">{t('allergyWarning')}:</span> {rx.allergies}</p>}
-    <p className="mt-6 text-2xl font-semibold text-[#12636B]">℞</p>
+    <p className="mt-6 text-2xl font-semibold text-[#115D62]">℞</p>
     <ol className="mt-2 space-y-3">{rx.items.map((i: any, n: number) => <li key={i.id} className="flex gap-3"><span className="font-semibold">{n + 1}.</span><div>
       <p className="font-semibold">{i.medication_name}</p>
       <p>{[i.dosage, i.frequency, i.duration].filter(Boolean).join(' · ')}</p>

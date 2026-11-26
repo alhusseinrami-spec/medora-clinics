@@ -417,15 +417,16 @@ Shared with web: API, authentication (bearer token variant of the same session),
 
 Full tokens and logo files: `architecture/brand/`. Summary:
 
-**Logo.** A rounded-square mark holding an "M" drawn as one continuous line that rises like a pulse trace, with a small apricot dot (the patient at the centre). Wordmark "MEDORA" in semibold, "CLINICS" spaced below. Files: `brand/medora-mark.svg`, `brand/medora-logo.svg`.
+**Logo.** The MEDORA Care logo adapted for Clinics: a cross of four rounded squares (dark teal above and below, light teal at the sides) around a coral circle, the patient at the centre. Wordmark "Medora" in rounded dark teal (Quicksand Bold outlines), with "CLINICS" letter-spaced in light teal beneath. Files: `brand/medora-logo.svg` (light backgrounds), `brand/medora-logo-dark.svg` (dark backgrounds), `brand/medora-mark.svg`, `brand/medora-app-icon.svg`. Logo colours are fixed: `#115D62`, `#1B9AA7`, `#EE6C5E`.
 
 **Colour.**
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `brand` | `#12636B` deep lagoon | `#3FB7B5` | Primary actions, active nav |
+| `brand` | `#115D62` dark teal | `#2FB0BC` | Primary actions, active nav |
+| `brand-2` | `#1B9AA7` light teal | `#5CC6D0` | Secondary brand, the logo's side squares and "CLINICS" |
 | `brand-ink` | `#0B1B2B` | `#E7EEF2` | Headings, body text |
-| `accent` | `#E8875B` apricot | `#F2A07A` | Highlights, the logo dot, waiting-room attention |
+| `accent` | `#EE6C5E` coral | `#F2877A` | Highlights, the logo's centre circle, waiting-room attention |
 | `surface` | `#F5F7F6` | `#0A141C` | App background |
 | `card` | `#FFFFFF` | `#111E28` | Cards, panels |
 | `line` | `#E2E8E6` | `#22313C` | Borders |
