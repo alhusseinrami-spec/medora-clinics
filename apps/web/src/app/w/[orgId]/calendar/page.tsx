@@ -39,7 +39,7 @@ export default function Calendar() {
         <Button variant="secondary" size="sm" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setAnchor(d); }}>{t('today')}</Button>
         <Button variant="secondary" size="sm" onClick={() => shift(1)}>{t('next')} {lang === 'ar' ? '←' : '→'}</Button>
         <div className="ms-auto flex gap-2">
-          {doctors.length > 1 && <Select value={doctor} onChange={(e) => setDoctor(e.target.value)} className="!h-8 w-48"><option value="">{t('doctor')}: all</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.full_name}</option>)}</Select>}
+          {doctors.length > 1 && <Select value={doctor} onChange={(e) => setDoctor(e.target.value)} className="!h-8 w-48"><option value="">{t('allDoctors')}</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.full_name}</option>)}</Select>}
           <div className="flex rounded-[10px] border border-line p-0.5">{(['day', 'week'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={cx('rounded-lg px-3 py-1 text-sm', view === v ? 'bg-brand text-white' : 'text-muted')}>{t(v)}</button>)}</div>
         </div>
       </div>
@@ -52,10 +52,11 @@ export default function Calendar() {
             <div className={cx('h-8 text-center text-xs font-medium', isToday ? 'text-brand' : 'text-muted')}>{d.toLocaleDateString(lang === 'ar' ? 'ar-LB' : lang, { weekday: 'short', day: 'numeric' })}</div>
             <div className="relative" style={{ height: HOURS.length * PX }}>
               {HOURS.map((h) => <button key={h} aria-label={`New appointment ${h}:00`} onClick={() => { const s = new Date(d); s.setHours(h, 0, 0, 0); setCreate(s); }} className="block w-full border-t border-line/70 hover:bg-brand-soft/50" style={{ height: PX }} />)}
-              {dayAppts.map((a) => {
+              {lanes(dayAppts).map(({ a, lane, of }) => {
                 const s = new Date(a.starts_at); const e = new Date(a.ends_at);
                 const top = (s.getHours() + s.getMinutes() / 60 - HOURS[0]) * PX; const h = Math.max(((e.getTime() - s.getTime()) / 3600e3) * PX, 22);
-                return <button key={a.id} onClick={() => setSel(a)} style={{ top, height: h }} className={cx('absolute inset-x-1 overflow-hidden rounded-md border-s-4 bg-card px-1.5 py-0.5 text-start text-xs shadow-sm ring-1 ring-line',
+                // Appointments that overlap (different doctors at the same time) share the column side by side.
+                return <button key={a.id} onClick={() => setSel(a)} style={{ top, height: h, insetInlineStart: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` }} className={cx('absolute overflow-hidden rounded-md border-s-4 bg-card px-1.5 py-0.5 text-start text-xs shadow-sm ring-1 ring-line',
                   a.status === 'cancelled' || a.status === 'no_show' ? 'border-danger opacity-50' : a.status === 'completed' ? 'border-success' : a.status === 'arrived' || a.status === 'waiting' ? 'border-accent' : a.status === 'in_consultation' ? 'border-brand' : 'border-info')}>
                   <span className="font-semibold">{fmtTime(a.starts_at, lang)} {a.patient_name}</span>{h > 30 && <span className="block truncate text-muted">{org.me.orgWide || doctors.length > 1 ? a.doctor_name : a.service_name ?? ''}</span>}
                 </button>;
@@ -89,4 +90,20 @@ function ApptDetail({ a, orgId, onChanged }: { a: any; orgId: string; onChanged:
       <Button variant="secondary" busy={busy} onClick={reschedule}>{t('save')}</Button></div>}
     <ErrorNote error={err} />
   </div>;
+}
+
+/** Places overlapping appointments in side-by-side lanes. Each group of overlapping appointments gets as many lanes as it needs. */
+function lanes(list: any[]) {
+  const sorted = [...list].sort((x, y) => +new Date(x.starts_at) - +new Date(y.starts_at));
+  const out: { a: any; lane: number; of: number }[] = [];
+  let group: { a: any; lane: number; of: number }[] = []; let groupEnd = 0; let laneEnds: number[] = [];
+  const flush = () => { const n = Math.max(1, laneEnds.length); for (const g of group) g.of = n; out.push(...group); group = []; laneEnds = []; };
+  for (const a of sorted) {
+    const s = +new Date(a.starts_at); const e = Math.max(+new Date(a.ends_at), s + 15 * 60e3);
+    if (group.length && s >= groupEnd) flush();
+    let lane = laneEnds.findIndex((end) => end <= s); if (lane < 0) { lane = laneEnds.length; laneEnds.push(e); } else laneEnds[lane] = e;
+    group.push({ a, lane, of: 1 }); groupEnd = Math.max(groupEnd, e);
+  }
+  flush();
+  return out;
 }

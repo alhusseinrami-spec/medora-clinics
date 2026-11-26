@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+apps/api/storage
+.git
+.env
+.env.*
+deploy/.env
+backups
+perf
+e2e/out
+docs/screenshots

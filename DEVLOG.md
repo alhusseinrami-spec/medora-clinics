@@ -2,6 +2,30 @@
 
 Status words: **Tested** (implemented and covered by automated tests), **Implemented** (works, checked by hand, no automated test yet), **Awaiting credentials** (code path exists, external service not connected), **Planned** (later release).
 
+## 2026-11-25 · Release 7: launch readiness (security, performance, backups, packaging)
+
+Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126, shared package 7 of 7, API end-to-end 68 of 68 with 12 new security and permission tests). Web production build passes. Browser smoke test: 170 checks passed on the development servers and 140 on the Docker stack (desktop, Android and iPhone screen sizes, English and Arabic, every role).
+
+**Nothing is deployed.** The hosting decision is still open. Everything needed to run MEDORA on one server is in `deploy/`, and that stack was built and run end to end inside the development container.
+
+| Item | Status |
+|---|---|
+| Security test: every API route is found automatically and called without a session (401), without a workspace, with another workspace (refused) and, for admin routes, as a normal user (403). New routes are covered without editing the test | Tested |
+| Permission matrix: each role's default permissions checked against real endpoints; permission changes apply at once; a user cannot grant what they do not hold | Tested |
+| Rate limits per address in the database (sign-in 20 per 5 min, registration and password reset 10 per hour, invitation previews 60 per 10 min); answers 429 and fails open if the limiter itself fails | Tested |
+| Security headers on the API (no caching of personal data, no framing, strict CSP, HSTS in production) and on the web app (Content Security Policy, no framing); no framework or stack details leak in errors | Tested |
+| Performance with 20,000 synthetic patients: row-level security permission lookups cached per transaction (patient search 3.9 s to 0.17 s, dashboard 20 s to 0.22 s); new indexes; every screen under 1 s at p95 with 10 concurrent requests. Results in `docs/launch/performance.md` | Tested (`perf/run.mjs`) |
+| Encrypted backups (`ops/backup.sh`): database dump, document files, checksums and row counts, AES-256 with a passphrase, retention; restore (`ops/restore.sh`) verifies checksums and every table's row count; monthly restore drill (`ops/restore_test.sh`) also checks a wrong passphrase is refused | Tested (drill run on the dev database and inside the Docker stack) |
+| Browser and phone smoke test (`e2e/smoke.mjs`): signs in through the form as each role and opens their main screens; fails on error pages, console errors, sideways scrolling on phones or a missing right-to-left layout in Arabic. iPhone is emulated in Chromium; Safari itself was not run | Tested |
+| Docker packaging: API, web (Next.js standalone) and backup images; Compose stack with PostgreSQL, one-off migrations, Caddy with automatic HTTPS, nightly backups; env template; server guide `deploy/README.md` | Tested locally (built, started, seeded, smoke test, encrypted upload, restore drill). Real server and certificate **Awaiting decision** (hosting) |
+| Calendar: overlapping appointments of different doctors now sit side by side; the doctor filter's "All doctors" is translated | Implemented (found by the smoke test screenshots) |
+| Live updates (WebSocket) use the same address as the site behind the reverse proxy | Implemented |
+| User acceptance checklist and go-live list for rami: `docs/launch/UAT-checklist.md` | Delivered for review |
+
+Decisions:
+- The production stack is one server with Docker Compose, matching the recommended hosting option; managed database or cloud services can replace the `db` service later without code changes.
+- The platform admin cannot use the admin console in production until two-factor sign-in is on; the demo seed's admin step therefore stops there in production mode, which is intended.
+
 ## 2026-11-25 · Release 6: commercial platform (plans, subscriptions, super admin)
 
 Test run at end of session: all suites passing (schema smoke test, tenant isolation 126 of 126 with 15 new, shared package 7 of 7, API end-to-end 56 of 56 with 9 new commercial tests). Web production build passes. Browser check with synthetic data: the MEDORA admin goes through overview, workspaces, a workspace's subscription, plans, support (answers a request) and settings. The center owner sees the subscription page and the answer to their request. Dr Nour's practice on the Solo plan has no Finance, Insurance or WhatsApp menus, and the subscription page shows in Arabic. No console errors.
@@ -174,4 +198,4 @@ Test run at end of session: 69 of 69 passing (schema 9, tenant isolation 35, sha
 - WHO growth percentile curves need licensed reference data: **Planned**. The chart shows the child's own measurements.
 - Email and SMS providers: **Awaiting credentials**. WhatsApp: **Planned** (Release 4).
 - Finance and insurance (Release 3): schema exists, API and UI **Planned**.
-- Not production-ready yet: no hosting and no backups configured. CI (GitHub Actions) runs every test suite and the web build on each push and pull request.
+- Not production-ready yet: no hosting and no backups configured (backups and server packaging added in Release 7). CI (GitHub Actions) runs every test suite and the web build on each push and pull request.
