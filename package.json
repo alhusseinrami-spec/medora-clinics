@@ -12,7 +12,8 @@
     "test:db": "node db/smoke_test.js && node db/rls_test.js",
     "build": "npm run build -w @medora/shared && npm run build -w @medora/api && npm run build -w @medora/web",
     "test": "npm run test:db && npm run test -w @medora/shared && npm run test -w @medora/api",
-    "db:presets": "node db/sync_presets.js"
+    "db:presets": "node db/sync_presets.js",
+    "postinstall": "npm run build -w @medora/shared"
   },
   "engines": {
     "node": ">=22"
