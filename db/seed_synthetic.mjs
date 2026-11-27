@@ -90,6 +90,40 @@ await maya.post('/appointments', { patientId: pa[1].id, doctorMembershipId: mKar
 await maya.post('/appointments', { patientId: pa[2].id, doctorMembershipId: mKarim, startsAt: at(2, 10), durationMinutes: 30 });
 for (const a of [a1, a2]) await lina.post(`/appointments/${a.id}/status`, { status: 'arrived' });
 
+// A busy morning in the waiting room: more synthetic patients, one in with each doctor, others waiting to be called in,
+// a walk-in, and today's cancellations and a no-show. db/demo_today.js spreads the arrival times so waits look real.
+const kids2 = [['Synthetic Child Karam', '2023-05-17', 'male', 'Peanuts'], ['Synthetic Child Tala', '2020-08-25', 'female', null], ['Synthetic Child Ziad', '2024-11-02', 'male', null],
+  ['Synthetic Child Nay', '2019-01-30', 'female', 'Penicillin'], ['Synthetic Child Elie', '2022-03-14', 'male', null]];
+const adults2 = [['Synthetic Adult Rania', '1969-07-22', 'female', 'Aspirin', 'Hypertension'], ['Synthetic Adult Georges', '1954-02-05', 'male', null, 'Atrial fibrillation'],
+  ['Synthetic Adult Mona', '1980-10-12', 'female', null, null], ['Synthetic Adult Walid', '1963-12-28', 'male', null, 'Type 2 diabetes, hypertension'],
+  ['Synthetic Adult Joelle', '1990-04-09', 'female', 'Latex', null], ['Synthetic Adult Bassam', '1972-09-18', 'male', null, 'Dyslipidemia']];
+const pk2 = [];
+for (const [i, [n, dob, sex, allergies]] of kids2.entries()) pk2.push(await lina.post('/patients', { fullName: n, dateOfBirth: dob, sex, phone: `+961 70 300 30${i}`, allergies, bloodType: ['O+', 'A+', 'B+', 'O-', 'A-'][i], confirmNotDuplicate: true }));
+const pa2 = [];
+for (const [i, [n, dob, sex, allergies, chronicDiseases]] of adults2.entries()) pa2.push(await maya.post('/patients', { fullName: n, dateOfBirth: dob, sex, phone: `+961 71 400 40${i}`, allergies, chronicDiseases, doctorMembershipId: mKarim, confirmNotDuplicate: true }));
+const book = (who, p, doc, startsAt, extra = {}) => who.post('/appointments', { patientId: p.id, doctorMembershipId: doc, startsAt, ...extra });
+// Dr Nour: Lea (9:00) is in with the doctor; Karam, Omar, Tala and a walk-in wait; Ziad cancelled.
+const k1 = await book(lina, pk2[0], mNour, at(0, 9, 30), { serviceId: wcv });
+const k2 = await book(lina, pk2[1], mNour, at(0, 10, 30), { serviceId: wcv });
+const k3 = await book(lina, pk2[2], mNour, at(0, 12), { serviceId: wcv });
+await book(lina, pk2[3], mNour, at(1, 10), { serviceId: wcv });
+await lina.post(`/appointments/${k1.id}/status`, { status: 'arrived' });
+await lina.post(`/appointments/${k2.id}/status`, { status: 'arrived' });
+await lina.post('/appointments/walk-in', { patientId: pk2[4].id, doctorMembershipId: mNour, serviceId: wcv, notes: 'Synthetic: cough since yesterday' });
+await lina.post(`/appointments/${k3.id}/status`, { status: 'cancelled', reason: 'Synthetic: parent called, child has a fever' });
+await nour.post('/consultations', { appointmentId: a1.id });
+// Dr Karim: Rania is in with the doctor; Georges and Mona wait; Walid cancelled; Joelle did not come.
+const c0 = await book(maya, pa2[4], mKarim, at(0, 8), { durationMinutes: 30 });
+const c1 = await book(maya, pa2[0], mKarim, at(0, 8, 30), { durationMinutes: 30 });
+const c2 = await book(maya, pa2[1], mKarim, at(0, 10), { durationMinutes: 30 });
+const c3 = await book(maya, pa2[2], mKarim, at(0, 10, 30), { durationMinutes: 30 });
+const c4 = await book(maya, pa2[3], mKarim, at(0, 11), { durationMinutes: 30 });
+await book(maya, pa2[5], mKarim, at(3, 9), { durationMinutes: 30 });
+for (const a of [c1, c2, c3]) await maya.post(`/appointments/${a.id}/status`, { status: 'arrived' });
+await maya.post(`/appointments/${c4.id}/status`, { status: 'cancelled', reason: 'Synthetic: travelling, will call back' });
+await maya.post(`/appointments/${c0.id}/status`, { status: 'no_show' });
+await karim.post('/consultations', { appointmentId: c1.id });
+
 // Prescriptions and a renewal request: Dr Karim's patient asked the front desk to renew a long-term prescription.
 const rxS = await karim.post('/prescriptions', { patientId: pa[0].id, notes: null, items: [
   { medicationName: 'Synthetic Amlodipine 5 mg', dosage: '1 tablet', frequency: 'once daily', duration: '3 months', instructions: null, notes: null },
