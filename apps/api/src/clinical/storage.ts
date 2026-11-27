@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { config } from '../config.js';
 
 const MAGIC = Buffer.from('MDR1');
@@ -16,15 +17,23 @@ export async function storeEncrypted(orgId: string, bytes: Buffer): Promise<{ st
   const c = createCipheriv('aes-256-gcm', key, iv);
   const enc = Buffer.concat([c.update(bytes), c.final()]);
   const storageKey = `${orgId}/${randomUUID()}`;
-  const path = join(config.storageDir, storageKey);
-  await mkdir(join(config.storageDir, orgId), { recursive: true, mode: 0o700 });
-  await writeFile(path, Buffer.concat([MAGIC, salt, iv, c.getAuthTag(), enc]), { mode: 0o600, flag: 'wx' });
+  const blob = Buffer.concat([MAGIC, salt, iv, c.getAuthTag(), enc]);
+  if (config.storageInDb) {
+    await ownerQuery(`INSERT INTO demo_file_blobs(storage_key, blob) VALUES ($1, $2)`, [storageKey, blob]);
+  } else {
+    const path = join(config.storageDir, storageKey);
+    await mkdir(join(config.storageDir, orgId), { recursive: true, mode: 0o700 });
+    await writeFile(path, blob, { mode: 0o600, flag: 'wx' });
+  }
   return { storageKey, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
 export async function readDecrypted(storageKey: string): Promise<Buffer> {
   if (!/^[0-9a-f-]{36}\/[0-9a-f-]{36}$/.test(storageKey)) throw new Error('bad storage key');
-  const blob = await readFile(join(config.storageDir, storageKey));
+  const blob = config.storageInDb
+    ? (await ownerQuery<{ blob: Buffer }>(`SELECT blob FROM demo_file_blobs WHERE storage_key = $1`, [storageKey]))[0]?.blob
+    : await readFile(join(config.storageDir, storageKey));
+  if (!blob) throw new Error('file not found');
   if (!blob.subarray(0, 4).equals(MAGIC)) throw new Error('unknown file format');
   const salt = blob.subarray(4, 20), iv = blob.subarray(20, 32), tag = blob.subarray(32, 48);
   const key = createHash('sha256').update(Buffer.concat([config.fileKey, salt])).digest();
@@ -41,3 +50,26 @@ export const ALLOWED_TYPES: Record<string, (b: Buffer) => boolean> = {
   'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
   'image/heic': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
 };
+
+/**
+ * Demo servers on hosts without a shared disk (serverless) keep the encrypted file bytes in the demo database instead,
+ * through the owner connection, so every instance sees every upload. Never used on a real clinic's server.
+ */
+let ownerPool: any = null;
+let tableReady = false;
+async function ownerQuery<R = any>(sql: string, params: unknown[]): Promise<R[]> {
+  if (!ownerPool) {
+    const pg = createRequire(import.meta.url)('pg');
+    ownerPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
+  }
+  if (!tableReady) {
+    await ownerPool.query(`CREATE TABLE IF NOT EXISTS demo_file_blobs (storage_key text PRIMARY KEY, blob bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`);
+    tableReady = true;
+  }
+  try { return (await ownerPool.query(sql, params)).rows; }
+  catch (e: any) {
+    // A demo reset drops the schema: create the table again once and retry.
+    if (e?.code !== '42P01') throw e;
+    tableReady = false; return ownerQuery(sql, params);
+  }
+}

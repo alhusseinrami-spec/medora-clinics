@@ -5,21 +5,22 @@
 // On the first run and after each move, the patients in the waiting room get staggered arrival times (a few
 // minutes to about forty minutes ago) and the patient with the doctor was called in a quarter of an hour ago.
 // Needs the database owner (DATABASE_URL); never run it against a real clinic's database.
+//
+// Also used by the API on a public demo server (DEMO_MODE=true), which keeps the day in the database instead of a file.
 const fs = require('fs');
 const { Client } = require('pg');
 
-(async () => {
-  const state = process.argv[2];
-  if (!state || !process.env.DATABASE_URL) { console.error('usage: DATABASE_URL=... node db/demo_today.js <state-file>'); process.exit(2); }
-  const last = fs.existsSync(state) ? fs.readFileSync(state, 'utf8').trim() : null;
-  const c = new Client({ connectionString: process.env.DATABASE_URL });
-  await c.connect();
+/** Aligns the demo data to today. `last` is the day it was aligned to before (YYYY-MM-DD), or null. Returns today. */
+async function alignToday(c, last) {
   try {
     const { rows: [{ today }] } = await c.query(`SELECT to_char(current_date, 'YYYY-MM-DD') AS today`);
-    if (last === today) return;
+    if (last === today) return { today, moved: false };
     await c.query('BEGIN');
-    // Plain data moves: no notifications, no audit rows, no reminder queueing.
-    await c.query(`SET LOCAL session_replication_role = replica`);
+    // Plain data moves: no notifications, no audit rows, no reminder queueing. A superuser switches triggers off for
+    // the transaction; a hosted database owner (no superuser) switches the table's own triggers off instead.
+    const { rows: [{ su }] } = await c.query(`SELECT rolsuper AS su FROM pg_roles WHERE rolname = current_user`);
+    if (su) await c.query(`SET LOCAL session_replication_role = replica`);
+    else await c.query(`ALTER TABLE appointments DISABLE TRIGGER USER`);
     if (last) {
       // Two steps through the far future, because the no-double-booking rule is checked row by row: moving straight
       // by a day could briefly put one appointment on top of another that has not moved yet.
@@ -36,11 +37,42 @@ const { Client } = require('pg');
     await c.query(`UPDATE appointments SET called_at = now() - interval '14 minutes', started_at = now() - interval '14 minutes',
       arrived_at = now() - interval '31 minutes'
       WHERE status = 'in_consultation'`);
+    if (!su) await c.query(`ALTER TABLE appointments ENABLE TRIGGER USER`);
     await c.query('COMMIT');
-    fs.writeFileSync(state, today);
-    console.log(last ? `Demo appointments moved from ${last} to ${today}.` : `Demo waiting room set for ${today}.`);
+    return { today, moved: Boolean(last) };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => {});
+    throw e;
+  }
+}
+
+/** Same, with the last day kept in the demo database (table demo_state). */
+async function alignTodayInDb(connectionString) {
+  const c = new Client({ connectionString });
+  await c.connect();
+  try {
+    await c.query(`CREATE TABLE IF NOT EXISTS demo_state (key text PRIMARY KEY, value text NOT NULL)`);
+    const last = (await c.query(`SELECT value FROM demo_state WHERE key = 'aligned_day'`)).rows[0]?.value ?? null;
+    const r = await alignToday(c, last);
+    if (r.today !== last) await c.query(`INSERT INTO demo_state(key, value) VALUES ('aligned_day', $1) ON CONFLICT (key) DO UPDATE SET value = $1`, [r.today]);
+    return r;
+  } finally { await c.end(); }
+}
+
+module.exports = { alignToday, alignTodayInDb };
+
+if (require.main === module) (async () => {
+  const state = process.argv[2];
+  if (!state || !process.env.DATABASE_URL) { console.error('usage: DATABASE_URL=... node db/demo_today.js <state-file>'); process.exit(2); }
+  const last = fs.existsSync(state) ? fs.readFileSync(state, 'utf8').trim() : null;
+  const c = new Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    const { today, moved } = await alignToday(c, last);
+    if (today === last) return;
+    fs.writeFileSync(state, today);
+    console.log(moved ? `Demo appointments moved from ${last} to ${today}.` : `Demo waiting room set for ${today}.`);
+  } catch (e) {
     console.error(e.message); process.exitCode = 1;
   } finally { await c.end(); }
 })();

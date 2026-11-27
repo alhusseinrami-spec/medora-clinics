@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import { ConflictException, Controller, Get, HttpCode, Module, NotFoundException, Post, Body, Req, Res, ServiceUnavailableException } from '@nestjs/common';
 import type { Response } from 'express';
 import { execFile } from 'node:child_process';
@@ -11,6 +10,7 @@ import type { AppRequest } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
 import { startSession } from '../auth/auth.controller.js';
+import { DB_FILES } from './files.js';
 
 /** Roles a visitor can view the demo clinic as, and the synthetic account behind each. */
 export const DEMO_ACCOUNTS = [
@@ -22,9 +22,29 @@ export const DEMO_ACCOUNTS = [
   { as: 'patient', email: 'patient@demo.medora' },
 ] as const;
 const DEMO_DOMAIN = '@demo.medora';
-const ROOT = new URL('../../../../../', import.meta.url);   // repository (or image) root, from dist/src/demo
 const RESET_COOLDOWN_MS = 2 * 60_000;
 let resetting = false; let lastReset = 0;
+let alignedOn = '';
+
+/** Keeps the demo's appointments on today's date (db/demo_today.js, with the day kept in the database). Once a day per instance. */
+async function alignDemoToday() {
+  const ownerUrl = process.env.DATABASE_URL;
+  const day = new Date().toISOString().slice(0, 10);
+  if (!ownerUrl || alignedOn === day) return;
+  const require = createRequire(import.meta.url);
+  const { alignTodayInDb } = require(DB_FILES.demoToday);
+  await alignTodayInDb(ownerUrl);
+  alignedOn = day;
+}
+
+/** Where the seed script reaches this API: itself on the loopback, or its public address on a serverless host. */
+function selfUrl(req: AppRequest): string {
+  if (process.env.DEMO_SEED_API_URL) return process.env.DEMO_SEED_API_URL;
+  const port = req.socket.localPort;
+  if (!process.env.VERCEL && port) return `http://127.0.0.1:${port}`;
+  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
+  return `https://${host}`;
+}
 
 /**
  * Demo mode, for showing MEDORA to clinics: on a server started with DEMO_MODE=true, visitors open the synthetic clinic
@@ -46,6 +66,7 @@ export class DemoController {
   async login(@Body() body: unknown, @Req() req: AppRequest, @Res({ passthrough: true }) res: Response) {
     if (!config.demoMode) throw new NotFoundException();
     const b = parse({ as: v.enum(...DEMO_ACCOUNTS.map((a) => a.as)) }, body);
+    await alignDemoToday().catch(() => undefined);
     const email = DEMO_ACCOUNTS.find((a) => a.as === b.as)!.email;
     const u = await this.db.tx({}, (t) => t.one(`SELECT * FROM auth_find_user($1)`, [email]));
     if (!u || u.status !== 'active') throw new ServiceUnavailableException('The demo is being prepared. Reset it or try again in a minute.');
@@ -71,21 +92,24 @@ export class DemoController {
       const { Client } = require('pg');
       const pg = new Client(ownerUrl); await pg.connect();
       try {
-        const real = (await pg.query(`SELECT count(*)::int AS n FROM users WHERE lower(email) NOT LIKE '%' || $1`, [DEMO_DOMAIN])).rows[0].n;
+        // A brand-new demo database has no tables yet: nothing to protect.
+        const hasUsers = (await pg.query(`SELECT to_regclass('public.users') IS NOT NULL AS ok`)).rows[0].ok;
+        const real = hasUsers ? (await pg.query(`SELECT count(*)::int AS n FROM users WHERE lower(email) NOT LIKE '%' || $1`, [DEMO_DOMAIN])).rows[0].n : 0;
         if (real > 0) throw new ConflictException('This database holds accounts outside the demo, so it will not be reset');
       } finally { await pg.end(); }
       if (Date.now() - lastReset < RESET_COOLDOWN_MS) throw new ConflictException('The demo was reset a moment ago');
-      const { migrate } = require(fileURLToPath(new URL('db/migrate.js', ROOT)));
-      const { syncPresets } = require(fileURLToPath(new URL('db/sync_presets.js', ROOT)));
+      const { migrate } = require(DB_FILES.migrate);
+      const { syncPresets } = require(DB_FILES.syncPresets);
       await migrate({ reset: true, log: () => {} });
       await syncPresets({ log: () => {} });
-      const seed = fileURLToPath(new URL('db/seed_synthetic.mjs', ROOT));
+      const seed = DB_FILES.seed;
       if (!existsSync(seed)) throw new ServiceUnavailableException('The demo data script is missing on this server');
-      const port = req.socket.localPort;
       await new Promise<void>((resolve, reject) => execFile(process.execPath, [seed], {
-        env: { ...process.env, API_URL: `http://127.0.0.1:${port}`, SEED_SKIP_ADMIN: '1' }, timeout: 120_000,
+        env: { ...process.env, API_URL: selfUrl(req), SEED_SKIP_ADMIN: '1' }, timeout: 240_000,
       }, (err, _out, stderr) => (err ? reject(new Error(`Demo seed failed: ${stderr || err.message}`)) : resolve())));
       lastReset = Date.now();
+      alignedOn = '';
+      await alignDemoToday();
       return { ok: true };
     } finally { resetting = false; }
   }
