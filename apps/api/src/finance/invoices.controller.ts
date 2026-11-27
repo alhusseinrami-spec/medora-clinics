@@ -56,6 +56,7 @@ export class InvoicesController {
       let items = (b.items ?? []) as Item[]; let currency = b.currency;
       if (b.appointmentId) {
         const a = await t.one(`SELECT a.patient_id, a.doctor_membership_id, a.department_id, a.status, s.name AS service_name, s.price, s.currency AS service_currency,
+            a.fee_amount, a.fee_currency, a.fee_note,
             m.consultation_fee, (SELECT id FROM invoices WHERE appointment_id=a.id AND kind='invoice' AND status<>'void') AS existing
           FROM appointments a JOIN memberships m ON m.id=a.doctor_membership_id LEFT JOIN services s ON s.id=a.service_id
           WHERE a.id=$1 AND a.organization_id=$2`, [b.appointmentId, c.orgId]);
@@ -64,7 +65,9 @@ export class InvoicesController {
         patientId ??= a.patient_id; doctor ??= a.doctor_membership_id; dept ??= a.department_id;
         if (patientId !== a.patient_id) throw new BadRequestException('The appointment is for another patient');
         if (!items.length) {
-          if (a.service_name) { items = [{ description: a.service_name, unitPrice: Number(a.price), kind: 'consultation' }]; currency ??= a.service_currency; }
+          // The fee the doctor set for this visit comes first; then the booked service's price; then the doctor's usual fee.
+          if (a.fee_amount != null) { items = [{ description: a.fee_note || a.service_name || 'Consultation', unitPrice: Number(a.fee_amount), kind: 'consultation' }]; currency ??= a.fee_currency; }
+          else if (a.service_name) { items = [{ description: a.service_name, unitPrice: Number(a.price), kind: 'consultation' }]; currency ??= a.service_currency; }
           else if (a.consultation_fee != null) items = [{ description: 'Consultation', unitPrice: Number(a.consultation_fee), kind: 'consultation' }];
         }
       }

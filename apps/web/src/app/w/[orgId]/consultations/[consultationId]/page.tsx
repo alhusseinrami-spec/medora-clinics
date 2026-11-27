@@ -12,6 +12,7 @@ import { useI18n } from '@/lib/i18n';
 import { label as L, type TemplateSchema } from '@medora/shared';
 import { useWorkspace } from '@/lib/workspace';
 import { startInvoice } from '@/components/Invoice';
+import { VisitFeeCard } from '@/components/FrontDesk';
 
 const VITALS: [string, string, string, number][] = [
   ['bp_systolic', 'bp', 'mmHg', 1], ['bp_diastolic', 'bp', 'mmHg', 1], ['pulse', 'pulse', 'bpm', 1], ['temperature_c', 'temperature', '°C', 0.1],
@@ -63,6 +64,7 @@ export default function ConsultationPage({ params }: { params: Promise<{ orgId: 
         {c.status === 'signed' && <AddendaCard c={c} canAdd={mine} onSaved={setC} />}
       </div>
       <div className="space-y-6">
+        {mine && c.appointment_id && <VisitFeeCard appointmentId={c.appointment_id} />}
         <Card title={t('prescriptions')} actions={editable && <Button size="sm" variant="secondary" onClick={async () => { try { await newPrescription(c.patient_id, c.id); await load(); } catch (e) { setErr(e); } }}>+ {t('newPrescription')}</Button>}>
           {rxs.length === 0 ? <p className="text-sm text-muted">{t('noPrescriptions')}</p> :
             <div className="space-y-5">{rxs.map((rx, i) => <div key={rx.id + rx.status} className={i ? 'border-t border-line pt-4' : ''}>

@@ -277,6 +277,9 @@ for (let i = 0; i < 7; i++) await maya.post(`/packages/${speech.id}/sessions`, {
 const staff = await owner.get('/staff');
 const mayaM = staff.find((m) => m.role_code === 'receptionist');
 await owner.put(`/staff/${mayaM.id}/permissions`, { permissions: [...mayaM.permissions, 'whatsapp.send'] });
+// Dr Nour's assistant prints the prescriptions Dr Nour issues and takes the visit fee at the desk.
+const linaM = staff.find((m) => m.role_code === 'assistant');
+if (linaM) await nour.put(`/staff/${linaM.id}/permissions`, { permissions: [...new Set([...linaM.permissions, 'prescription.view', 'payment.register'])] });
 for (const p of [pk[0], pk[1], pa[0]]) await maya.put(`/patients/${p.id}/consent`, { optedIn: true });
 for (const purpose of ['confirmation', 'reminder_24h', 'reschedule', 'cancellation']) await owner.put(`/whatsapp/automation/${purpose}`, { enabled: true, offsetMinutes: null, followUpDays: null, sendHour: null });
 
