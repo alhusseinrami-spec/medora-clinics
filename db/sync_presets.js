@@ -5,7 +5,11 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const url = process.env.DATABASE_URL || 'postgres://medora:medora_dev@localhost:5432/medora';
 async function syncPresets({ log = console.log } = {}) {
-  const { PRESETS: P1, EXAM_PRESETS } = await import(pathToFileURL(path.join(__dirname, '../packages/shared/dist/index.js')).href);
+  // The workspace path works in the repo; the package name works where only node_modules was shipped (Vercel).
+  let shared;
+  try { shared = await import(pathToFileURL(path.join(__dirname, '../packages/shared/dist/index.js')).href); }
+  catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; shared = await import('@medora/shared'); }
+  const { PRESETS: P1, EXAM_PRESETS } = shared;
   const c = new Client(url); await c.connect();
   try {
     for (const p of [...P1, ...EXAM_PRESETS]) {
