@@ -9,7 +9,9 @@ import { get, post } from '@/lib/api';
 import { Logo, cx } from './ui';
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { me, org, orgId, can, feature, live, subscribe } = useWorkspace();
+  const { me, org, orgId, can, feature, live: socket, synced, subscribe } = useWorkspace();
+  // Live through the WebSocket, or through the 3-second sync on hosts that cannot keep a socket open (the Vercel demo).
+  const live = socket || synced;
   const { t, lang, setLang, role } = useI18n();
   const path = usePathname(); const router = useRouter();
   const [unread, setUnread] = useState(0);

@@ -18,7 +18,7 @@ export interface LiveEvent { type: string; event?: string; appointment_id?: stri
 export interface LiveAlert { key: string; type: 'called' | 'fee' | 'completed' | 'prescription'; appointment_id: string | null; prescription_id: string | null;
   doctor_membership_id: string; doctor_name: string; patient_name: string; room_name: string | null; at: string; fee_amount: number | null; fee_currency: string | null }
 
-interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; feature: (f: string) => boolean; reload: () => Promise<void>; live: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void;
+interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; feature: (f: string) => boolean; reload: () => Promise<void>; live: boolean; synced: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void;
   alerts: LiveAlert[]; dismissAlert: (key: string) => void }
 const Ctx = createContext<WS>(null as any);
 
@@ -61,6 +61,8 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
   // demo on Vercel cannot keep one open), every 20 seconds as a safety net when it is, and right after any socket event.
   // A changed `sig` refreshes the open screens; new events become alerts for the front desk.
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
+  // True while the GET /live poll answers: screens are in sync even where the WebSocket cannot connect.
+  const [synced, setSynced] = useState(false);
   const pollNow = useRef<() => void>(() => {});
   const liveRef = useRef(false); liveRef.current = live;
   const me = state?.org.me;
@@ -74,7 +76,7 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
       try {
         const r = await get<{ cursor: string; sig: string; events: LiveAlert[] }>(`/live${cursor ? `?since=${encodeURIComponent(cursor)}` : ''}`);
         if (stop) return;
-        cursor = r.cursor;
+        cursor = r.cursor; setSynced(true);
         if (sig !== null && r.sig !== sig) listeners.current.forEach((fn) => fn({ type: 'waiting_room', event: 'sync' }));
         sig = r.sig;
         const fresh = r.events.filter((e) => !seen.has(e.key));
@@ -92,7 +94,7 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
           }
           return next.slice(-4);
         });
-      } catch { /* offline or signed out: try again on the next tick */ }
+      } catch { if (!stop) setSynced(false); /* offline or signed out: try again on the next tick */ }
       if (!stop) timer = setTimeout(poll, document.visibilityState !== 'visible' ? 30000 : liveRef.current ? 20000 : 3000);
     };
     pollNow.current = () => { poll(); };
@@ -107,7 +109,7 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
 
   if (error) return <div className="p-10 text-danger">{error}</div>;
   if (!state) return <div className="p-10 text-muted">…</div>;
-  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), feature: (f) => state.org.plan?.features?.[f] === true, reload, live, subscribe, alerts, dismissAlert }}>
+  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), feature: (f) => state.org.plan?.features?.[f] === true, reload, live, synced, subscribe, alerts, dismissAlert }}>
     {children}<LiveAlerts />
   </Ctx.Provider>;
 }
