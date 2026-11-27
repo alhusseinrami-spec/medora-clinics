@@ -9,6 +9,7 @@ import { AppointmentRequests } from '@/components/PortalStaff';
 import { get, post } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLiveReload, useWorkspace } from '@/lib/workspace';
+import { Checkout } from '@/components/FrontDesk';
 
 type Row = { patient_id: string; full_name: string; due: string; overdue?: boolean; [k: string]: any };
 /** Specialty pack follow-up lists from the dashboard summary, shown when the doctor's specialty dashboard lists the widget. */
@@ -74,6 +75,7 @@ export default function Dashboard() {
                 <ApptActions appt={{ id: q.appointment_id, status: q.status }} onDone={load} compact />
               </li>))}</ul>}
           </Card>}
+          {scheduling && !isDoctor && <Checkout compact />}
           {scheduling && <AppointmentRequests />}
           {scheduling && <Card title={t('todaysAppointments')}>
             {today.length === 0 ? <Empty>{t('noAppointments')}</Empty> : <ul className="divide-y divide-line">{today.map((a) => (

@@ -10,6 +10,7 @@ import { get } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useLiveReload, useWorkspace } from '@/lib/workspace';
 import { fmtTime } from '@/components/ui';
+import { Checkout } from '@/components/FrontDesk';
 
 /**
  * Live queues, one per doctor: who is in with the doctor, who waits to be called in, and today's cancellations.
@@ -62,6 +63,7 @@ export default function WaitingRoom() {
           </Card>;
         })}
       </div>}
+      {!org.me.doctorMembershipId && <div className="mt-6"><Checkout /></div>}
     </>
   );
 }

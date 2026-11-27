@@ -1,0 +1,36 @@
+// Live sync strings: call-in alerts for the front desk, the visit fee, checkout.
+export const LIVE: Record<'en' | 'fr' | 'ar', Record<string, string>> = {
+  en: {
+    liveSendIn: 'Send the patient in', liveCalledBody: '{doctor} is ready for {patient}', liveRoom: 'Room',
+    liveCollect: 'Collect {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: '{patient} has finished with {doctor}',
+    liveRxReady: 'Prescription ready for {patient}', livePrint: 'Print', liveTakePayment: 'Take payment', liveGotIt: 'OK',
+    checkout: 'Checkout', checkoutHint: 'Visits that ended today and what to collect. Updates by itself.', checkoutEmpty: 'No finished visits yet today.',
+    toCollect: 'To collect', feeNotSet: 'Fee not set yet', feePaid: 'Paid', stillDue: 'Due', openInvoice: 'Invoice',
+    withDoctorNow: 'With the doctor', visitDone: 'Finished', prescriptionsToPrint: 'Prescriptions',
+    visitFee: 'Visit fee', visitFeeHint: 'The front desk sees this right away and collects it.', feeSent: 'Sent to the front desk',
+    feeNote: 'What it covers (optional)', feeUsual: 'Usual', clearFee: 'Clear', feeInvoiced: 'Invoiced: change the amount on the invoice.',
+    sendToDesk: 'Send to front desk',
+  },
+  fr: {
+    liveSendIn: 'Faites entrer le patient', liveCalledBody: '{doctor} attend {patient}', liveRoom: 'Salle',
+    liveCollect: 'Encaisser {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: '{patient} a terminé avec {doctor}',
+    liveRxReady: 'Ordonnance prête pour {patient}', livePrint: 'Imprimer', liveTakePayment: 'Encaisser', liveGotIt: 'OK',
+    checkout: 'Sortie et paiement', checkoutHint: 'Les visites terminées aujourd’hui et le montant à encaisser. Mise à jour automatique.', checkoutEmpty: 'Aucune visite terminée aujourd’hui.',
+    toCollect: 'À encaisser', feeNotSet: 'Montant pas encore fixé', feePaid: 'Payé', stillDue: 'Reste dû', openInvoice: 'Facture',
+    withDoctorNow: 'Chez le médecin', visitDone: 'Terminée', prescriptionsToPrint: 'Ordonnances',
+    visitFee: 'Prix de la visite', visitFeeHint: 'L’accueil le voit tout de suite et l’encaisse.', feeSent: 'Envoyé à l’accueil',
+    feeNote: 'Ce qu’il comprend (facultatif)', feeUsual: 'Habituel', clearFee: 'Effacer', feeInvoiced: 'Facturée : modifiez le montant sur la facture.',
+    sendToDesk: 'Envoyer à l’accueil',
+  },
+  ar: {
+    liveSendIn: 'حان دور المريض', liveCalledBody: '{doctor} جاهز لاستقبال {patient}', liveRoom: 'الغرفة',
+    liveCollect: 'المطلوب تحصيل {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: 'أنهى {patient} المعاينة مع {doctor}',
+    liveRxReady: 'الوصفة جاهزة لـ {patient}', livePrint: 'طباعة', liveTakePayment: 'استلام الدفعة', liveGotIt: 'حسنًا',
+    checkout: 'الخروج والدفع', checkoutHint: 'زيارات اليوم المنتهية والمبلغ المطلوب. تتحدّث تلقائيًا.', checkoutEmpty: 'لا زيارات منتهية اليوم بعد.',
+    toCollect: 'المطلوب', feeNotSet: 'لم يُحدَّد المبلغ بعد', feePaid: 'مدفوع', stillDue: 'المتبقي', openInvoice: 'الفاتورة',
+    withDoctorNow: 'عند الطبيب', visitDone: 'منتهية', prescriptionsToPrint: 'الوصفات',
+    visitFee: 'سعر الزيارة', visitFeeHint: 'يظهر فورًا لدى الاستقبال لتحصيله.', feeSent: 'أُرسل إلى الاستقبال',
+    feeNote: 'ما يشمله (اختياري)', feeUsual: 'المعتاد', clearFee: 'مسح', feeInvoiced: 'صدرت فاتورة: يُعدَّل المبلغ في الفاتورة.',
+    sendToDesk: 'إرسال إلى الاستقبال',
+  },
+};

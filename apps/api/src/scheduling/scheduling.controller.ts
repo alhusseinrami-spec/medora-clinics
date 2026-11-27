@@ -19,7 +19,9 @@ function assertActsFor(c: TenantInfo, doctor: string) {
 const APPT_SELECT = `SELECT a.id, a.patient_id, p.full_name AS patient_name, p.patient_number, p.phone AS patient_phone,
     a.doctor_membership_id, du.full_name AS doctor_name, a.starts_at, a.ends_at, a.status, a.is_walk_in, a.notes,
     a.service_id, s.name AS service_name, a.room_id, r.name AS room_name, a.location_id, a.department_id,
-    a.recurrence_rule, a.arrived_at, a.called_at, a.completed_at, a.cancelled_reason, a.created_at, a.overbook_reason
+    a.recurrence_rule, a.arrived_at, a.called_at, a.completed_at, a.cancelled_reason, a.created_at, a.overbook_reason,
+    a.fee_amount, a.fee_currency, a.fee_note, a.fee_set_at,
+    coalesce(s.price, dm.consultation_fee) AS fee_suggested, CASE WHEN s.id IS NOT NULL THEN s.currency ELSE 'USD' END AS fee_suggested_currency
   FROM appointments a JOIN patients p ON p.id=a.patient_id
   JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id
   LEFT JOIN services s ON s.id=a.service_id LEFT JOIN rooms r ON r.id=a.room_id`;
@@ -249,6 +251,112 @@ export class SchedulingController {
       await audit(t, c.userId, c.orgId, 'appointment.status', 'appointment', a.id, { from: a.status, to: b.status });
       if (b.status === 'cancelled') await queueAppointmentEvent(t, 'cancellation', a.id);
       return this.getAppt(t, a.id);
+    });
+  }
+
+  /**
+   * The fee for this visit, set by the doctor (or by staff who take payments) so the front desk knows what to collect.
+   * It becomes the invoice line when the visit is invoiced; once an invoice exists, change the invoice instead.
+   */
+  @RequireAnyPerm('appointment.manage', 'payment.register') @Put('appointments/:id/fee')
+  setFee(@Param('id') aid: string, @Body() body: unknown, @Ctx() c: TenantInfo) {
+    const b = parse({ amount: v.num(0, 1e11).nullable(), currency: v.enum('USD', 'LBP').optional(), note: v.str(1, 200).nullable() }, body);
+    return this.db.tx(c, async (t) => {
+      const a = await this.getAppt(t, id(aid));
+      if (c.doctorMembershipId !== a.doctor_membership_id && !c.permissions.has('payment.register')) {
+        throw new ForbiddenException('Only the treating doctor or staff who take payments can set the visit fee');
+      }
+      if (['cancelled', 'no_show'].includes(a.status)) throw new ConflictException('This visit did not take place');
+      const inv = await t.one(`SELECT id FROM invoices WHERE appointment_id=$1 AND kind='invoice' AND status<>'void'`, [a.id]);
+      if (inv) throw new ConflictException({ message: 'This visit is already invoiced: change the invoice instead', code: 'already_invoiced', invoiceId: inv.id });
+      const amount = b.amount ?? null;
+      await t.q(`UPDATE appointments SET fee_amount=$2, fee_currency=$3, fee_note=$4, fee_set_at=CASE WHEN $2::numeric IS NULL THEN NULL ELSE now() END, fee_set_by=$5 WHERE id=$1`,
+        [a.id, amount, amount === null ? null : (b.currency ?? a.fee_currency ?? a.fee_suggested_currency ?? 'USD'), amount === null ? null : (b.note ?? null), c.userId]);
+      await audit(t, c.userId, c.orgId, 'appointment.fee', 'appointment', a.id, { amount, currency: b.currency });
+      return this.getAppt(t, a.id);
+    });
+  }
+
+  /**
+   * The front desk's checkout list for today (workspace time zone): visits that ended or have a fee set, with what to
+   * collect, the invoice and what is still due (for staff who see invoices), and prescriptions to print (for staff who
+   * may view prescriptions). Row-level security decides which visits, invoices and prescriptions each caller sees.
+   */
+  @RequirePerm('appointment.manage') @Get('front-desk/checkout')
+  checkout(@Ctx() c: TenantInfo) {
+    return this.db.tx(c, async (t) => {
+      const tz = await t.one(`SELECT date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start FROM organizations WHERE id=$1`, [c.orgId]);
+      const rows = await t.q(`${APPT_SELECT} WHERE a.organization_id=$1 AND a.starts_at >= $2::timestamptz - interval '12 hours' AND a.starts_at < $2::timestamptz + interval '1 day'
+          AND a.status NOT IN ('cancelled','no_show') AND (a.status IN ('in_consultation','completed') OR a.fee_amount IS NOT NULL)
+        ORDER BY coalesce(a.completed_at, a.called_at, a.starts_at) DESC LIMIT 100`, [c.orgId, tz.day_start]);
+      if (!rows.length) return [];
+      const ids = rows.map((r) => r.id);
+      const canInv = c.permissions.has('payment.register') || c.permissions.has('finance.view');
+      const invoices = canInv ? await t.q(`SELECT i.appointment_id, i.id, i.status, i.invoice_number AS number, b.total, b.paid, b.credited, b.currency
+          FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id WHERE i.appointment_id = ANY($1::uuid[]) AND i.kind='invoice' AND i.status<>'void'`, [ids]) : [];
+      const rxs = c.permissions.has('prescription.view') ? await t.q(`SELECT r.id, r.patient_id, r.prescribed_by, r.status, r.issued_at FROM prescriptions r
+          WHERE r.organization_id=$1 AND r.status='issued' AND r.issued_at >= $2::timestamptz - interval '12 hours'
+            AND r.patient_id = ANY($3::uuid[]) ORDER BY r.issued_at`, [c.orgId, tz.day_start, rows.map((r) => r.patient_id)]) : [];
+      return rows.map((r) => {
+        const inv = invoices.find((i) => i.appointment_id === r.id);
+        return {
+          appointment_id: r.id, patient_id: r.patient_id, patient_name: r.patient_name, patient_number: r.patient_number,
+          doctor_membership_id: r.doctor_membership_id, doctor_name: r.doctor_name, status: r.status, service_name: r.service_name,
+          called_at: r.called_at, completed_at: r.completed_at,
+          fee_amount: r.fee_amount === null ? null : Number(r.fee_amount), fee_currency: r.fee_currency, fee_note: r.fee_note, fee_set_at: r.fee_set_at,
+          invoice: inv ? { id: inv.id, status: inv.status, number: inv.number, currency: inv.currency, total: Number(inv.total),
+            due: Math.max(0, Math.round((Number(inv.total) - Number(inv.paid) - Number(inv.credited)) * 100) / 100) } : null,
+          prescriptions: rxs.filter((x) => x.patient_id === r.patient_id && x.prescribed_by === r.doctor_membership_id).map((x) => ({ id: x.id, issued_at: x.issued_at })),
+        };
+      });
+    });
+  }
+
+  /**
+   * Live sync for hosts that cannot keep a WebSocket open (the public demo on Vercel), and the alert feed for all hosts.
+   * `sig` changes whenever something the caller's screens show changes (today's visits, fees, prescriptions, invoices,
+   * unread notifications), so a screen refetches only then. `events` are what happened after `since`: a patient called
+   * in, a fee set, a visit finished, a prescription issued. The next `since` is `cursor`, which overlaps a little so an
+   * event committed during the previous poll is never missed (the client drops repeats by key).
+   */
+  @Tenant() @Get('live')
+  live(@Ctx() c: TenantInfo, @Query('since') since?: string) {
+    const q = parse({ since: v.datetime().optional() }, { since });
+    return this.db.tx(c, async (t) => {
+      const base = await t.one(`SELECT now() - interval '15 seconds' AS cursor,
+          date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start FROM organizations WHERE id=$1`, [c.orgId]);
+      const day = `$2::timestamptz - interval '1 day'`; 
+      const sig = await t.one(`SELECT md5(
+          coalesce((SELECT string_agg(a.id::text || a.status || a.starts_at::text || coalesce(a.fee_amount::text, '') || coalesce(a.fee_currency, '') || coalesce(a.room_id::text, ''), ',' ORDER BY a.id)
+            FROM appointments a WHERE a.organization_id=$1 AND ((a.starts_at >= ${day} AND a.starts_at < $2::timestamptz + interval '15 days')
+              OR a.status IN ('arrived','waiting','in_consultation'))), '')
+          || '|' || coalesce((SELECT count(*)::text || coalesce(max(r.issued_at)::text, '') FROM prescriptions r WHERE r.organization_id=$1 AND r.issued_at >= ${day}), '')
+          || '|' || coalesce((SELECT count(*)::text || coalesce(sum(b.paid)::text, '') || coalesce(string_agg(i.status, '' ORDER BY i.id), '') FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id
+              WHERE i.organization_id=$1 AND i.created_at >= ${day}), '')
+          || '|' || (SELECT count(*)::text FROM notifications n WHERE n.user_id=$3 AND n.read_at IS NULL)) AS sig`, [c.orgId, base.day_start, c.userId]);
+      let events: any[] = [];
+      if (q.since) {
+        // Never look back more than ten minutes, so an old tab coming back does not replay the whole day.
+        const from = new Date(Math.max(Date.parse(q.since), Date.now() - 10 * 60000)).toISOString();
+        const who = `JOIN patients p ON p.id=a.patient_id JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id LEFT JOIN rooms rm ON rm.id=a.room_id`;
+        events = await t.q(`
+          SELECT 'called' AS type, a.id AS appointment_id, NULL::uuid AS prescription_id, a.doctor_membership_id, du.full_name AS doctor_name, p.full_name AS patient_name,
+                 rm.name AS room_name, a.called_at AS at, NULL::numeric AS fee_amount, NULL::text AS fee_currency
+            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.called_at > $2 AND a.status='in_consultation'
+          UNION ALL
+          SELECT 'fee', a.id, NULL, a.doctor_membership_id, du.full_name, p.full_name, rm.name, a.fee_set_at, a.fee_amount, a.fee_currency
+            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.fee_set_at > $2 AND a.fee_amount IS NOT NULL AND a.status NOT IN ('cancelled','no_show')
+          UNION ALL
+          SELECT 'completed', a.id, NULL, a.doctor_membership_id, du.full_name, p.full_name, rm.name, a.completed_at, a.fee_amount, a.fee_currency
+            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.completed_at > $2 AND a.status='completed'
+          UNION ALL
+          SELECT 'prescription', NULL, r.id, r.prescribed_by, du.full_name, p.full_name, NULL, r.issued_at, NULL, NULL
+            FROM prescriptions r JOIN patients p ON p.id=r.patient_id JOIN memberships dm ON dm.id=r.prescribed_by JOIN users du ON du.id=dm.user_id
+            WHERE r.organization_id=$1 AND r.issued_at > $2 AND r.status='issued'
+          ORDER BY at LIMIT 50`, [c.orgId, from]);
+        events = events.map((e) => ({ ...e, fee_amount: e.fee_amount === null ? null : Number(e.fee_amount), key: `${e.type}:${e.appointment_id ?? e.prescription_id}:${new Date(e.at).getTime()}` }));
+      }
+      return { cursor: base.cursor, sig: sig.sig, events };
     });
   }
 

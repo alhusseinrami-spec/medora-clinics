@@ -8,6 +8,7 @@ import { PORTAL } from './i18n-portal';
 import { COMMERCIAL } from './i18n-commercial';
 import { SPECIALTY } from './i18n-specialty';
 import { PROFILE } from './i18n-profile';
+import { LIVE } from './i18n-live';
 
 export type Lang = 'en' | 'ar' | 'fr';
 type Dict = Record<string, string>;
@@ -105,7 +106,7 @@ const ar: Dict = {
   noPermission: 'ليست لديك صلاحية لعرض هذا.', acceptInvitation: 'قبول الدعوة', invitedAs: 'أنت مدعو بصفة',
   resetPassword: 'إعادة تعيين كلمة المرور', newPassword: 'كلمة مرور جديدة', liveConnected: 'مباشر', liveOffline: 'إعادة الاتصال…', freeSlots: 'أوقات متاحة',
 };
-const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en, ...COMMERCIAL.en, ...SPECIALTY.en, ...CLINIC.en, ...PROFILE.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr, ...COMMERCIAL.fr, ...SPECIALTY.fr, ...CLINIC.fr, ...PROFILE.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar, ...COMMERCIAL.ar, ...SPECIALTY.ar, ...CLINIC.ar, ...PROFILE.ar } };
+const DICTS: Record<Lang, Dict> = { en: { ...en, ...CLINICAL.en, ...FINANCE.en, ...COMM.en, ...PORTAL.en, ...COMMERCIAL.en, ...SPECIALTY.en, ...CLINIC.en, ...PROFILE.en, ...LIVE.en }, fr: { ...fr, ...CLINICAL.fr, ...FINANCE.fr, ...COMM.fr, ...PORTAL.fr, ...COMMERCIAL.fr, ...SPECIALTY.fr, ...CLINIC.fr, ...PROFILE.fr, ...LIVE.fr }, ar: { ...ar, ...CLINICAL.ar, ...FINANCE.ar, ...COMM.ar, ...PORTAL.ar, ...COMMERCIAL.ar, ...SPECIALTY.ar, ...CLINIC.ar, ...PROFILE.ar, ...LIVE.ar } };
 
 export const STATUS_LABEL: Record<Lang, Record<string, string>> = {
   en: { scheduled: 'Scheduled', confirmed: 'Confirmed', arrived: 'Arrived', waiting: 'Waiting', in_consultation: 'In consultation', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' },
