@@ -4,12 +4,9 @@ const { Client } = require('pg');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const url = process.env.DATABASE_URL || 'postgres://medora:medora_dev@localhost:5432/medora';
-async function syncPresets({ log = console.log } = {}) {
-  // The workspace path works in the repo; the package name works where only node_modules was shipped (Vercel).
-  let shared;
-  try { shared = await import(pathToFileURL(path.join(__dirname, '../packages/shared/dist/index.js')).href); }
-  catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; shared = await import('@medora/shared'); }
-  const { PRESETS: P1, EXAM_PRESETS } = shared;
+// `presets` lets a caller that already loaded @medora/shared pass them in (the bundled API on Vercel ships no workspace files).
+async function syncPresets({ log = console.log, presets } = {}) {
+  const { PRESETS: P1, EXAM_PRESETS } = presets || await import(pathToFileURL(path.join(__dirname, '../packages/shared/dist/index.js')).href);
   const c = new Client(url); await c.connect();
   try {
     for (const p of [...P1, ...EXAM_PRESETS]) {

@@ -10,6 +10,7 @@ import type { AppRequest } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
 import { startSession } from '../auth/auth.controller.js';
+import { PRESETS, EXAM_PRESETS } from '@medora/shared';
 import { DB_FILES } from './files.js';
 
 /** Roles a visitor can view the demo clinic as, and the synthetic account behind each. */
@@ -101,7 +102,7 @@ export class DemoController {
       const { migrate } = require(DB_FILES.migrate);
       const { syncPresets } = require(DB_FILES.syncPresets);
       await migrate({ reset: true, log: () => {} });
-      await syncPresets({ log: () => {} });
+      await syncPresets({ log: () => {}, presets: { PRESETS, EXAM_PRESETS } });
       const seed = DB_FILES.seed;
       if (!existsSync(seed)) throw new ServiceUnavailableException('The demo data script is missing on this server');
       await new Promise<void>((resolve, reject) => execFile(process.execPath, [seed], {
