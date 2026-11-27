@@ -37,13 +37,15 @@ export const config = {
   emailProviderConfigured: Boolean(env.EMAIL_PROVIDER_API_KEY),
   /** Platform administrators must use two-factor sign-in (always in production). */
   requireAdminMfa: isProd || env.ADMIN_REQUIRE_MFA === 'true',
-  /** Tests that sign up many accounts from one address switch the per-IP limits off. Never in production. */
-  rateLimitOff: !isProd && env.RATE_LIMIT === 'off',
+  /** Tests that sign up many accounts from one address switch the per-IP limits off. Never in production, except on a public demo server (synthetic data only), whose reset signs up the demo accounts again. */
+  rateLimitOff: (!isProd || env.DEMO_MODE === 'true') && env.RATE_LIMIT === 'off',
   /** Public demo server: anyone may view the synthetic clinic as any role and reset it. Never on a server with real data. */
   get demoMode() { return env.DEMO_MODE === 'true'; },
   fileKey: fileKey(),
   /** Encrypted local file storage. S3-compatible storage is used only when its credentials are set (not connected yet). */
   storageDir: env.STORAGE_DIR ?? fileURLToPath(new URL('../../storage/', import.meta.url)),
+  /** Demo servers without a shared disk keep uploaded files in the demo database (needs DATABASE_URL). */
+  storageInDb: env.DEMO_MODE === 'true' && env.STORAGE_BACKEND === 'database' && Boolean(env.DATABASE_URL),
   s3Configured: Boolean(env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY),
   maxUploadBytes: 15 * 1024 * 1024,
 };

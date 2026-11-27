@@ -7,7 +7,8 @@ async function migrate({ reset = false, log = console.log } = {}) {
   const c = new Client(url); await c.connect();
   try {
     if (reset) {
-      if (process.env.NODE_ENV === 'production') throw new Error('refusing --reset in production');
+      // A public demo server (DEMO_MODE=true, synthetic data only) runs in production mode but is reset on purpose.
+      if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') throw new Error('refusing --reset in production');
       await c.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
     }
     await c.query('CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');

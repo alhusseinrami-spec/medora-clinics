@@ -60,6 +60,12 @@ export const useWorkspace = () => useContext(Ctx);
 
 /** Re-run a loader whenever the waiting room changes, plus on mount. */
 export function useLiveReload(load: () => void) {
-  const { subscribe } = useWorkspace();
+  const { subscribe, live } = useWorkspace();
   useEffect(() => { load(); return subscribe((e) => { if (e.type === 'waiting_room' || e.type === 'notification') load(); }); }, [load, subscribe]);
+  // Without the live channel (a host that cannot keep the WebSocket open), refresh every 20 seconds instead.
+  useEffect(() => {
+    if (live) return;
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 20000);
+    return () => clearInterval(timer);
+  }, [live, load]);
 }
