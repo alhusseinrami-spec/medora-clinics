@@ -6,9 +6,9 @@
       "framework": "nextjs"
     },
     "api": {
-      "root": "apps/api/",
-      "entrypoint": "index.mjs",
-      "framework": "express"
+      "root": "apps/demo-api/",
+      "framework": "express",
+      "entrypoint": "index.mjs"
     }
   },
   "rewrites": [

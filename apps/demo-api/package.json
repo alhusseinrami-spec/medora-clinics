@@ -1,0 +1,13 @@
+{
+  "name": "@medora/demo-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vercel entry for the public demo's API (see vercel.json). The API itself lives in apps/api.",
+  "type": "module",
+  "scripts": {
+    "build": "cd ../.. && npm run build -w @medora/api"
+  },
+  "dependencies": {
+    "@medora/api": "*"
+  }
+}
