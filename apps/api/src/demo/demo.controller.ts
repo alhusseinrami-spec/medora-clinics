@@ -10,6 +10,7 @@ import type { AppRequest } from '../common/types.js';
 import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
 import { startSession } from '../auth/auth.controller.js';
+import { PRESETS, EXAM_PRESETS } from '@medora/shared';
 import { DB_FILES } from './files.js';
 
 /** Roles a visitor can view the demo clinic as, and the synthetic account behind each. */
@@ -68,7 +69,10 @@ export class DemoController {
     const b = parse({ as: v.enum(...DEMO_ACCOUNTS.map((a) => a.as)) }, body);
     await alignDemoToday().catch(() => undefined);
     const email = DEMO_ACCOUNTS.find((a) => a.as === b.as)!.email;
-    const u = await this.db.tx({}, (t) => t.one(`SELECT * FROM auth_find_user($1)`, [email]));
+    const findUser = () => this.db.tx({}, (t) => t.one(`SELECT * FROM auth_find_user($1)`, [email]));
+    let u = await findUser();
+    // A new demo database has the schema but no clinic yet: the first sign-in loads the synthetic clinic.
+    if (!u && !resetting && await this.isEmpty()) { await this.reset(req); u = await findUser(); }
     if (!u || u.status !== 'active') throw new ServiceUnavailableException('The demo is being prepared. Reset it or try again in a minute.');
     await startSession(this.db, res, req, u.id, false);
     const ws = await this.db.tx({ userId: u.id }, async (t) => {
@@ -77,6 +81,17 @@ export class DemoController {
         WHERE m.user_id=$1 AND m.status='active' AND o.status='active' ORDER BY (o.kind='medical_center') DESC, o.name LIMIT 1`, [u.id]);
     });
     return { as: b.as, organizationId: ws?.id ?? null, portal: b.as === 'patient' };
+  }
+
+  private async isEmpty(): Promise<boolean> {
+    const ownerUrl = process.env.DATABASE_URL;
+    if (!ownerUrl) return false;
+    const { Client } = createRequire(import.meta.url)('pg');
+    const pg = new Client(ownerUrl); await pg.connect();
+    try {
+      const r = (await pg.query(`SELECT to_regclass('public.users') IS NULL AS none`)).rows[0];
+      return r.none || (await pg.query(`SELECT NOT EXISTS (SELECT 1 FROM users) AS empty`)).rows[0].empty;
+    } finally { await pg.end(); }
   }
 
   /** Wipes the database and seeds the synthetic clinic again. Takes a few seconds; everyone is signed out. */
@@ -101,7 +116,7 @@ export class DemoController {
       const { migrate } = require(DB_FILES.migrate);
       const { syncPresets } = require(DB_FILES.syncPresets);
       await migrate({ reset: true, log: () => {} });
-      await syncPresets({ log: () => {} });
+      await syncPresets({ log: () => {}, presets: { PRESETS, EXAM_PRESETS } });
       const seed = DB_FILES.seed;
       if (!existsSync(seed)) throw new ServiceUnavailableException('The demo data script is missing on this server');
       await new Promise<void>((resolve, reject) => execFile(process.execPath, [seed], {

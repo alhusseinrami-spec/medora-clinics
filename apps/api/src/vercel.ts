@@ -3,6 +3,7 @@
 import './demo/env.js';
 import { createRequire } from 'node:module';
 import { createApp } from './app.js';
+import { PRESETS, EXAM_PRESETS } from '@medora/shared';
 import { DB_FILES } from './demo/files.js';
 
 // Demo server only: bring the demo database's schema up to date before the API connects (a new database has none,
@@ -17,7 +18,7 @@ if (process.env.DEMO_MODE === 'true' && process.env.DATABASE_URL) {
     const { migrate } = require(DB_FILES.migrate);
     const { syncPresets } = require(DB_FILES.syncPresets);
     await migrate({ log: () => {} });
-    await syncPresets({ log: () => {} });
+    await syncPresets({ log: () => {}, presets: { PRESETS, EXAM_PRESETS } });
   } finally {
     await c.query('SELECT pg_advisory_unlock(424242)').catch(() => undefined);
     await c.end();

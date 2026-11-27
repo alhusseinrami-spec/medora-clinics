@@ -34,9 +34,8 @@ test('demo: reset seeds the clinic, then anyone can view it as each role', { tim
   process.env.DEMO_MODE = 'true';
   const info = await call('GET', '/demo');
   assert.equal(info.body.enabled, true); assert.ok(info.body.roles.includes('receptionist'));
-  assert.equal((await call('POST', '/demo/login', { as: 'owner' })).status, 503, 'nothing to show before the first reset');
-  const r = await call('POST', '/demo/reset');
-  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const first = await call('POST', '/demo/login', { as: 'owner' });
+  assert.equal(first.status, 200, `the first sign-in on an empty database loads the clinic: ${JSON.stringify(first.body)}`);
   assert.equal((await call('POST', '/demo/reset')).status, 409, 'not twice in a row');
 
   const doc = await call('POST', '/demo/login', { as: 'doctor' });
