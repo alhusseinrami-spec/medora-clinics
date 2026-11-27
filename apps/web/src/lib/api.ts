@@ -55,3 +55,12 @@ export function wsUrl() {
   // Development: the web app is on :3000 and the API on :4000. Behind the reverse proxy (deploy/), /ws is on the same origin.
   return port === '3000' ? `${ws}://${hostname}:4000/ws` : `${ws}://${host}/ws`;
 }
+
+/** A protected image as a temporary blob: URL, for <img>. The caller revokes it when done. */
+export async function fileBlobUrl(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (activeOrg) headers['x-org-id'] = activeOrg;
+  const res = await fetch(`/api${path}`, { headers, credentials: 'include' });
+  if (!res.ok) throw new ApiError(res.status, null);
+  return URL.createObjectURL(await res.blob());
+}

@@ -6,12 +6,12 @@ import { useI18n } from '@/lib/i18n';
 import { useWorkspace } from '@/lib/workspace';
 import { useDoctors } from '@/lib/hooks';
 
-const EMPTY = { fullName: '', dateOfBirth: '', sex: '', phone: '', whatsappNumber: '', email: '', address: '', nationalId: '', bloodType: '', allergies: '', chronicDiseases: '', currentMedications: '', medicalHistory: '', preferredLanguage: 'en', ecName: '', ecPhone: '', ecRelation: '' };
+const EMPTY = { fullName: '', dateOfBirth: '', sex: '', phone: '', whatsappNumber: '', email: '', address: '', nationalId: '', nssfNumber: '', civilRegistry: '', adminNotes: '', bloodType: '', allergies: '', chronicDiseases: '', currentMedications: '', medicalHistory: '', preferredLanguage: 'en', ecName: '', ecPhone: '', ecRelation: '' };
 type F = typeof EMPTY;
 
 export function fromPatient(p: any): F {
   return { fullName: p.full_name ?? '', dateOfBirth: p.date_of_birth ?? '', sex: p.sex ?? '', phone: p.phone ?? '', whatsappNumber: p.whatsapp_number ?? '', email: p.email ?? '',
-    address: p.address ?? '', nationalId: p.national_id ?? '', bloodType: p.blood_type ?? '', allergies: p.allergies ?? '', chronicDiseases: p.chronic_diseases ?? '',
+    address: p.address ?? '', nationalId: p.national_id ?? '', nssfNumber: p.nssf_number ?? '', civilRegistry: p.civil_registry ?? '', adminNotes: p.admin_notes ?? '', bloodType: p.blood_type ?? '', allergies: p.allergies ?? '', chronicDiseases: p.chronic_diseases ?? '',
     currentMedications: p.current_medications ?? '', medicalHistory: p.medical_history ?? '', preferredLanguage: p.preferred_language ?? 'en',
     ecName: p.emergency_contact?.name ?? '', ecPhone: p.emergency_contact?.phone ?? '', ecRelation: p.emergency_contact?.relation ?? '' };
 }
@@ -25,7 +25,7 @@ export function PatientForm({ initial, onSubmit, submitLabel, askDoctor }: { ini
   const history = can('patient.history.read');
   const build = (confirm: boolean) => {
     const b: any = { fullName: f.fullName, preferredLanguage: f.preferredLanguage };
-    const opt: [keyof F, string][] = [['dateOfBirth', 'dateOfBirth'], ['sex', 'sex'], ['phone', 'phone'], ['whatsappNumber', 'whatsappNumber'], ['email', 'email'], ['address', 'address'], ['nationalId', 'nationalId']];
+    const opt: [keyof F, string][] = [['dateOfBirth', 'dateOfBirth'], ['sex', 'sex'], ['phone', 'phone'], ['whatsappNumber', 'whatsappNumber'], ['email', 'email'], ['address', 'address'], ['nationalId', 'nationalId'], ['nssfNumber', 'nssfNumber'], ['civilRegistry', 'civilRegistry'], ['adminNotes', 'adminNotes']];
     if (history) opt.push(['bloodType', 'bloodType'], ['allergies', 'allergies'], ['chronicDiseases', 'chronicDiseases'], ['currentMedications', 'currentMedications'], ['medicalHistory', 'medicalHistory']);
     for (const [k, key] of opt) b[key] = f[k] === '' ? (initial ? null : undefined) : f[k];
     if (f.ecName && f.ecPhone) b.emergencyContact = { name: f.ecName, phone: f.ecPhone, ...(f.ecRelation ? { relation: f.ecRelation } : {}) };
@@ -52,7 +52,10 @@ export function PatientForm({ initial, onSubmit, submitLabel, askDoctor }: { ini
       <Field label={t('whatsapp')}><Input type="tel" value={f.whatsappNumber} onChange={set('whatsappNumber')} /></Field>
       <Field label={t('email')}><Input type="email" value={f.email} onChange={set('email')} /></Field>
       <Field label={t('nationalId')}><Input value={f.nationalId} onChange={set('nationalId')} /></Field>
+      <Field label={t('nssfNumber')}><Input value={f.nssfNumber} onChange={set('nssfNumber')} /></Field>
+      <Field label={t('civilRegistry')} hint={t('civilRegistryHint')}><Input value={f.civilRegistry} onChange={set('civilRegistry')} /></Field>
       <Field label={t('address')} className="sm:col-span-2"><Input value={f.address} onChange={set('address')} /></Field>
+      <Field label={t('frontDeskNotes')} hint={t('adminNotesHint')} className="sm:col-span-2"><Textarea value={f.adminNotes} onChange={set('adminNotes')} /></Field>
       <Field label={`${t('emergencyContact')} · ${t('fullName')}`}><Input value={f.ecName} onChange={set('ecName')} /></Field>
       <Field label={`${t('emergencyContact')} · ${t('phone')}`}><Input value={f.ecPhone} onChange={set('ecPhone')} /></Field>
       <Field label={t('language')}><Select value={f.preferredLanguage} onChange={set('preferredLanguage')}><option value="en">English</option><option value="ar">العربية</option><option value="fr">Français</option></Select></Field>

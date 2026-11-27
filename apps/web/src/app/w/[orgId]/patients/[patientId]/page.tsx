@@ -1,7 +1,7 @@
 'use client';
 import { PatientAppAccess } from '@/components/PortalStaff';
 import { use, useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Select, Tabs, fmtDate, fmtTime } from '@/components/ui';
+import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Select, Tabs, fmtDate, fmtMoney, fmtTime } from '@/components/ui';
 import { PageTitle } from '@/components/Shell';
 import { PatientForm, fromPatient } from '@/components/PatientForm';
 import { SpecialtyForm } from '@/components/SpecialtyForm';
@@ -17,48 +17,67 @@ import { PrescriptionEditor, newPrescription } from '@/components/PrescriptionEd
 import { DocumentsPanel } from '@/components/DocumentsPanel';
 import { PatientBilling, PatientPolicies, startInvoice } from '@/components/PatientFinance';
 import { PatientMessages } from '@/components/Comm';
+import { BodyMap, ClinicalSummary, CustomFields, DataConsents, Demographics, FrontDeskNotes, MeasurementTrends, Odontogram, Packages, PhotoPairs, Reminders, SummaryTiles, useSummary } from '@/components/PatientProfile';
 
 export default function PatientFile({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = use(params);
-  const { t, lang, status } = useI18n(); const { can, org, feature } = useWorkspace();
+  const { t, lang, status } = useI18n(); const { can, org, feature, orgId } = useWorkspace();
   const [p, setP] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [tab, setTab] = useState('overview');
   const [edit, setEdit] = useState(false); const [book, setBook] = useState(false); const [linkOpen, setLinkOpen] = useState(false);
   const load = useCallback(() => get(`/patients/${patientId}`).then(setP).catch(setErr), [patientId]);
+  const summary = useSummary(patientId); const router = useRouter(); const [visitErr, setVisitErr] = useState<unknown>(null);
+  const startVisit = async () => { setVisitErr(null); try { const c = await post('/consultations', { patientId }); router.push(`/w/${orgId}/consultations/${c.id}`); } catch (e) { setVisitErr(e); } };
   useEffect(() => { load(); }, [load]);
   if (err) return <ErrorNote error={err} />;
   if (!p) return <p className="text-muted">{t('loading')}</p>;
-  const tabs = [{ key: 'overview', label: t('overview') }, ...(can('patient.history.read') && org.me.actingDoctors.length ? [{ key: 'specialty', label: t('specialtyLabel') }] : []),
+  const history = can('patient.history.read');
+  const tabs = [{ key: 'overview', label: t('overview') }, ...(history && org.me.actingDoctors.length ? [{ key: 'specialty', label: t('specialtyLabel') }] : []),
     ...(can('clinical_notes.read') ? [{ key: 'consultations', label: t('consultations') }] : []),
     ...(can('prescription.view') ? [{ key: 'prescriptions', label: t('prescriptions') }] : []),
+    ...(history ? [{ key: 'charts', label: t('charts') }] : []),
     { key: 'documents', label: t('documents') },
     ...(can('appointment.manage') ? [{ key: 'appointments', label: t('appointments') }] : []),
+    { key: 'packages', label: t('packages') },
     ...(can('payment.register') || can('finance.view') ? [{ key: 'billing', label: t('billing') }] : []),
-    ...(can('patient.file.read') && feature('insurance') ? [{ key: 'insurance', label: t('insurance') }] : []), ...(can('patient.file.read') && feature('whatsapp') ? [{ key: 'messages', label: 'WhatsApp' }] : []), { key: 'timeline', label: t('timeline') }];
+    ...(can('patient.file.read') && feature('insurance') ? [{ key: 'insurance', label: t('insurance') }] : []),
+    { key: 'consents', label: t('consentsTab') },
+    ...(can('patient.file.read') && feature('whatsapp') ? [{ key: 'messages', label: 'WhatsApp' }] : []), { key: 'timeline', label: t('timeline') }];
   const age = p.date_of_birth ? Math.floor((Date.now() - Date.parse(p.date_of_birth)) / (365.25 * 86400e3)) : null;
   return (
     <>
       <PageTitle title={p.full_name} sub={<span className="tabular">{p.patient_number}{age !== null ? ` · ${age} y` : ''}{p.sex ? ` · ${t(p.sex)}` : ''} · {p.doctors.map((d: any) => d.full_name).join(', ') || '—'}</span>}
-        actions={<>{can('patient.register') && <Button variant="secondary" onClick={() => setEdit(true)}>{t('edit')}</Button>}{can('appointment.manage') && <Button onClick={() => setBook(true)}>{t('newAppointment')}</Button>}</>} />
+        actions={<>{can('patient.register') && <Button variant="secondary" onClick={() => setEdit(true)}>{t('edit')}</Button>}
+          {org.me.doctorMembershipId && can('clinical_notes.read') && <Button variant="secondary" onClick={startVisit}>{t('startVisit')}</Button>}{can('appointment.manage') && <Button onClick={() => setBook(true)}>{t('newAppointment')}</Button>}</>} />
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       <div className="mt-5">
-        {tab === 'overview' && <div className="grid gap-6 lg:grid-cols-2">
-          <Card title={t('personal')}>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-              {([['dateOfBirth', p.date_of_birth && fmtDate(p.date_of_birth, lang)], ['phone', p.phone], ['whatsapp', p.whatsapp_number], ['email', p.email], ['address', p.address], ['nationalId', p.national_id],
-                ['emergencyContact', p.emergency_contact && `${p.emergency_contact.name} · ${p.emergency_contact.phone}`], ['language', p.preferred_language?.toUpperCase()]] as [string, any][]).map(([k, v]) =>
-                <div key={k} className="contents"><dt className="text-muted">{t(k)}</dt><dd>{v || '—'}</dd></div>)}
-            </dl>
-          </Card>
-          {'allergies' in p ? <Card title={t('medicalHistory')}>
-            <dl className="space-y-2 text-sm">{([['bloodType', p.blood_type], ['allergies', p.allergies], ['chronicDiseases', p.chronic_diseases], ['currentMedications', p.current_medications], ['medicalHistory', p.medical_history]] as [string, any][]).map(([k, v]) =>
-              <div key={k}><dt className="text-muted">{t(k)}</dt><dd className={k === 'allergies' && v ? 'font-medium text-danger' : ''}>{v || '—'}</dd></div>)}</dl>
-          </Card> : <Card title={t('medicalHistory')}><p className="text-sm text-muted">{t('noPermission')}</p></Card>}
-          <Card title={t('doctor')} actions={can('patient.register') && org.organization.kind === 'medical_center' && <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>+ {t('add')}</Button>}>
-            <ul className="space-y-1 text-sm">{p.doctors.map((d: any) => <li key={d.membership_id}>{d.full_name} <span className="text-muted">· {d.specialty_code}</span></li>)}</ul>
-          </Card>
-          {(can('appointment.manage') || can('whatsapp.send') || can('prescription.view')) && <RefillCard patientId={patientId} />}
-          {can('patient.file.read') && feature('patient_app') && <PatientAppAccess patientId={patientId} email={p.email ?? null} />}
-        </div>}
+        {tab === 'overview' && <>
+          <ErrorNote error={visitErr} />
+          {summary.data && <SummaryTiles s={summary.data} />}
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              {summary.data ? <ClinicalSummary patientId={patientId} s={summary.data} reload={summary.reload} /> : <Card><p className="text-sm text-muted">{t('loading')}</p></Card>}
+              {summary.data && !summary.data.restricted && <Reminders s={summary.data} />}
+              {history && <MeasurementTrends patientId={patientId} onChange={summary.reload} />}
+              {'allergies' in p && (p.allergies || p.chronic_diseases || p.current_medications || p.medical_history) && <Card title={t('medicalHistory')}>
+                <dl className="space-y-2 text-sm">{([['allergies', p.allergies], ['chronicDiseases', p.chronic_diseases], ['currentMedications', p.current_medications], ['medicalHistory', p.medical_history]] as [string, any][]).filter(([, v]) => v).map(([k, v]) =>
+                  <div key={k}><dt className="text-muted">{t(k)}</dt><dd className="whitespace-pre-wrap">{v}</dd></div>)}</dl>
+              </Card>}
+            </div>
+            <div className="space-y-6">
+              <Demographics p={p} />
+              <FrontDeskNotes p={p} onSaved={setP} />
+              <CustomFields p={p} onSaved={setP} />
+              <Card title={t('doctor')} actions={can('patient.register') && org.organization.kind === 'medical_center' && <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>+ {t('add')}</Button>}>
+                <ul className="space-y-1 text-sm">{p.doctors.map((d: any) => <li key={d.membership_id}>{d.full_name} <span className="text-muted">· {d.specialty_code}</span></li>)}</ul>
+              </Card>
+              {(can('appointment.manage') || can('whatsapp.send') || can('prescription.view')) && <RefillCard patientId={patientId} />}
+              {can('patient.file.read') && feature('patient_app') && <PatientAppAccess patientId={patientId} email={p.email ?? null} />}
+            </div>
+          </div>
+        </>}
+        {tab === 'charts' && <div className="space-y-6"><BodyMap patientId={patientId} /><Odontogram patientId={patientId} /><PhotoPairs patientId={patientId} /></div>}
+        {tab === 'packages' && <Packages patientId={patientId} />}
+        {tab === 'consents' && <DataConsents patientId={patientId} patientName={p.full_name} />}
         {tab === 'specialty' && <SpecialtyTab patientId={patientId} />}
         {tab === 'consultations' && <Consultations patientId={patientId} />}
         {tab === 'prescriptions' && <Prescriptions patientId={patientId} />}
@@ -117,6 +136,8 @@ function Timeline({ patientId }: { patientId: string }) {
       case 'consultation': return <Link className="hover:underline" href={`/w/${orgId}/consultations/${e.ref}`}>{t('consultation')} · {e.doctor} · <Badge status={e.status}>{t(e.status)}</Badge></Link>;
       case 'prescription': return <>{t('prescription')} · {e.doctor} · <Badge status={e.status === 'issued' ? 'issued' : e.status === 'draft' ? 'draft' : 'cancelled'}>{e.status === 'cancelled' ? t('cancelledRx') : t(e.status)}</Badge></>;
       case 'document': return <>{t('documents')} · {t(e.status)} · {e.doctor ?? '—'}</>;
+      case 'invoice': { const [st, no, total, cur, kind] = String(e.status).split('|');
+        return <Link className="hover:underline" href={`/w/${orgId}/billing/${e.ref}`}>{kind === 'credit_note' ? t('creditNote') : t('invoiceShort')} #{no} · {fmtMoney(total, cur, lang)}{e.doctor ? ` · ${e.doctor}` : ''} · <Badge status={st}>{t(st === 'paid' ? 'paid' : st === 'unpaid' ? 'unpaid' : st)}</Badge></Link>; }
       default: return `${t('specialtyUpdated')} (${e.status}) · ${e.doctor ?? '—'}`;
     }
   };

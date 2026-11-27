@@ -8,6 +8,7 @@ import { parse, v } from '../common/validate.js';
 import { audit } from '../common/audit.js';
 import { SpecialtyModule, } from '../specialty/specialty.controller.js';
 import { SpecialtyService } from '../specialty/specialty.service.js';
+import { ProfileController } from './profile.controller.js';
 
 const id = (x: string) => parse({ id: v.uuid() }, { id: x }).id;
 
@@ -18,12 +19,16 @@ const PROFILE = {
   bloodType: v.enum('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-').nullable(), allergies: v.str(1, 2000).nullable(),
   chronicDiseases: v.str(1, 2000).nullable(), currentMedications: v.str(1, 2000).nullable(), medicalHistory: v.str(1, 5000).nullable(),
   nationalId: v.str(2, 60).nullable(), preferredLanguage: v.enum('en', 'ar', 'fr').optional(),
+  nssfNumber: v.str(2, 40).nullable(), civilRegistry: v.str(2, 120).nullable(), adminNotes: v.str(1, 2000).nullable(),
+  customFields: v.array(v.object({ label: v.str(1, 60), value: v.str(1, 300) }), 30).optional(),
 };
 const COLS: Record<string, string> = {
   fullName: 'full_name', dateOfBirth: 'date_of_birth', sex: 'sex', phone: 'phone', whatsappNumber: 'whatsapp_number', email: 'email',
   address: 'address', emergencyContact: 'emergency_contact', bloodType: 'blood_type', allergies: 'allergies', chronicDiseases: 'chronic_diseases',
   currentMedications: 'current_medications', medicalHistory: 'medical_history', nationalId: 'national_id', preferredLanguage: 'preferred_language',
+  nssfNumber: 'nssf_number', civilRegistry: 'civil_registry', adminNotes: 'admin_notes', customFields: 'custom_fields',
 };
+const JSON_FIELDS = ['emergencyContact', 'customFields'];
 const HISTORY_COLS = ['allergies', 'chronic_diseases', 'current_medications', 'medical_history', 'blood_type'];
 
 @Controller('patients')
@@ -83,7 +88,7 @@ export class PatientsController {
       if (!doctor && !c.orgWide) throw new BadRequestException('Choose the doctor this patient is registered with');
       const pid = randomUUID();
       const fields = Object.keys(COLS).filter((k) => (b as any)[k] !== undefined);
-      const vals = fields.map((k) => (k === 'emergencyContact' && (b as any)[k] ? JSON.stringify((b as any)[k]) : (b as any)[k]));
+      const vals = fields.map((k) => (JSON_FIELDS.includes(k) && (b as any)[k] ? JSON.stringify((b as any)[k]) : (b as any)[k]));
       await t.q(`INSERT INTO patients(id, organization_id, created_by, ${fields.map((k) => COLS[k]).join(',')})
         VALUES ($1,$2,$3,${fields.map((_, i) => `$${i + 4}`).join(',')})`, [pid, c.orgId, c.userId, ...vals]);
       if (doctor) await t.q(`INSERT INTO patient_memberships(patient_id,membership_id,linked_by) VALUES ($1,$2,$3)`, [pid, doctor, c.userId]);
@@ -118,7 +123,7 @@ export class PatientsController {
     if (fields.some((k) => HISTORY_COLS.includes(COLS[k])) && !c.permissions.has('patient.history.read')) throw new ForbiddenException('Changing medical history needs the medical history permission');
     if (!fields.length) throw new BadRequestException('Nothing to update');
     return this.db.tx(c, async (t) => {
-      const vals = fields.map((k) => (k === 'emergencyContact' && b[k] ? JSON.stringify(b[k]) : b[k]));
+      const vals = fields.map((k) => (JSON_FIELDS.includes(k) && b[k] ? JSON.stringify(b[k]) : b[k]));
       const r = await t.q(`UPDATE patients SET ${fields.map((k, i) => `${COLS[k]}=$${i + 2}`).join(', ')}, updated_at=now() WHERE id=$1 RETURNING id`, [id(pid), ...vals]);
       if (!r.length) throw new NotFoundException('Patient not found');
       await audit(t, c.userId, c.orgId, 'patient.update', 'patient', pid, { fields });
@@ -197,10 +202,15 @@ export class PatientsController {
           UNION ALL
           SELECT 'document', d.created_at, d.id, d.kind, u.full_name FROM medical_documents d
             LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.patient_id=$1 AND d.deleted_at IS NULL
+          UNION ALL
+          SELECT 'invoice', i.issued_at, i.id, CASE WHEN i.status <> 'issued' THEN i.status WHEN b.paid >= b.total - b.credited - 0.005 THEN 'paid' ELSE 'unpaid' END
+              || '|' || i.invoice_number || '|' || round(b.total, 2) || '|' || i.currency || '|' || i.kind, u.full_name
+            FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id
+            LEFT JOIN memberships m ON m.id=i.doctor_membership_id LEFT JOIN users u ON u.id=m.user_id WHERE i.patient_id=$1
         ) x ORDER BY at DESC`, [pid]);
     });
   }
 }
 
-@Module({ imports: [SpecialtyModule], controllers: [PatientsController] })
+@Module({ imports: [SpecialtyModule], controllers: [PatientsController, ProfileController] })
 export class PatientsModule {}
