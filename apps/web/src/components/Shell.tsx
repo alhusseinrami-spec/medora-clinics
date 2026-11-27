@@ -47,37 +47,64 @@ export function Shell({ children }: { children: ReactNode }) {
   const myRoles = org.me.memberships.map((m) => role(m.role_code)).join(', ');
   const logout = async () => { await post('/auth/logout'); router.replace('/login'); };
 
+  // Drawer menu for phones: closes on navigation and stops the page behind it from scrolling.
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => { setDrawer(false); }, [path]);
+  useEffect(() => {
+    if (!drawer) return;
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawer(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [drawer]);
+
+  const sidebar = (
+    <>
+      <div className="px-2"><Logo /></div>
+      <div className="relative mt-6">
+        <button onClick={() => setMenu(!menu)} className="w-full rounded-[10px] border border-line px-3 py-2 text-start hover:bg-surface">
+          <span className="block truncate text-sm font-semibold">{org.organization.name}</span>
+          <span className="block truncate text-xs text-muted">{myRoles}</span>
+        </button>
+        {menu && <div className="absolute z-20 mt-1 w-full rounded-[10px] border border-line bg-card py-1 shadow-lg">
+          {[...new Map(me.workspaces.filter((w) => w.status === 'active').map((w) => [w.organization_id, w])).values()].map((w) => (
+            <Link key={w.organization_id} href={`/w/${w.organization_id}/dashboard`} onClick={() => setMenu(false)} className={cx('block px-3 py-2 text-sm hover:bg-surface', w.organization_id === orgId && 'font-semibold text-brand')}>{w.name}</Link>
+          ))}
+        </div>}
+      </div>
+      <nav className="mt-5 space-y-0.5">
+        {nav.filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium', path.startsWith(n.href) ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface')}><span aria-hidden className="w-4 text-center">{n.icon}</span>{n.label}</Link>)}
+      </nav>
+      <p className="mt-6 px-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('settings')}</p>
+      <nav className="mt-1 space-y-0.5">
+        {settings.filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('block rounded-[10px] px-3 py-1.5 text-sm', path.startsWith(n.href) ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface hover:text-ink')}>{n.label}</Link>)}
+      </nav>
+      <div className="mt-auto space-y-2 px-2 text-xs text-muted">
+        {me.user.is_platform_admin && <Link href="/admin" className="block font-medium text-brand hover:underline">{t('adminConsole')}</Link>}
+        <p className="truncate">{me.user.full_name}</p>
+        <button onClick={logout} className="hover:text-ink">{t('signOut')}</button>
+      </div>
+    </>
+  );
+
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-e border-line bg-card px-3 py-5 md:flex print:!hidden">
-        <div className="px-2"><Logo /></div>
-        <div className="relative mt-6">
-          <button onClick={() => setMenu(!menu)} className="w-full rounded-[10px] border border-line px-3 py-2 text-start hover:bg-surface">
-            <span className="block truncate text-sm font-semibold">{org.organization.name}</span>
-            <span className="block truncate text-xs text-muted">{myRoles}</span>
-          </button>
-          {menu && <div className="absolute z-20 mt-1 w-full rounded-[10px] border border-line bg-card py-1 shadow-lg">
-            {[...new Map(me.workspaces.filter((w) => w.status === 'active').map((w) => [w.organization_id, w])).values()].map((w) => (
-              <Link key={w.organization_id} href={`/w/${w.organization_id}/dashboard`} onClick={() => setMenu(false)} className={cx('block px-3 py-2 text-sm hover:bg-surface', w.organization_id === orgId && 'font-semibold text-brand')}>{w.name}</Link>
-            ))}
-          </div>}
-        </div>
-        <nav className="mt-5 space-y-0.5">
-          {nav.filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium', path.startsWith(n.href) ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface')}><span aria-hidden className="w-4 text-center">{n.icon}</span>{n.label}</Link>)}
-        </nav>
-        <p className="mt-6 px-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('settings')}</p>
-        <nav className="mt-1 space-y-0.5">
-          {settings.filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('block rounded-[10px] px-3 py-1.5 text-sm', path.startsWith(n.href) ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface hover:text-ink')}>{n.label}</Link>)}
-        </nav>
-        <div className="mt-auto space-y-2 px-2 text-xs text-muted">
-          {me.user.is_platform_admin && <Link href="/admin" className="block font-medium text-brand hover:underline">{t('adminConsole')}</Link>}
-          <p className="truncate">{me.user.full_name}</p>
-          <button onClick={logout} className="hover:text-ink">{t('signOut')}</button>
-        </div>
+    <div className="flex min-h-dvh">
+      {/* The menu scrolls on its own when it is taller than the screen (dvh follows the phone's visible height). */}
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto overscroll-contain border-e border-line bg-card px-3 py-5 md:flex print:!hidden">
+        {sidebar}
       </aside>
+      {drawer && <div className="fixed inset-0 z-40 md:hidden print:hidden">
+        <button aria-label={t('close')} onClick={() => setDrawer(false)} className="absolute inset-0 bg-black/40" />
+        <aside role="dialog" aria-modal="true" className="absolute inset-y-0 start-0 flex h-dvh w-72 max-w-[85vw] flex-col overflow-y-auto overscroll-contain bg-card px-3 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl">
+          {sidebar}
+        </aside>
+      </div>}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b border-line bg-card/90 px-4 backdrop-blur md:px-8 print:hidden">
-          <div className="md:hidden"><Logo size={28} word={false} /></div>
+          <div className="flex items-center gap-2 md:hidden">
+            <button onClick={() => setDrawer(true)} aria-label={t('menu')} aria-expanded={drawer} className="rounded-md p-2 text-lg leading-none hover:bg-surface"><span aria-hidden>☰</span></button>
+            <Logo size={28} word={false} />
+          </div>
           <span className={cx('inline-flex items-center gap-1.5 text-xs', live ? 'text-success' : 'text-muted')}><span className={cx('size-2 rounded-full', live ? 'bg-success' : 'bg-muted')} />{live ? t('liveConnected') : t('liveOffline')}</span>
           <div className="flex items-center gap-3">
             <Link href={`${base}/dashboard#notifications`} className="relative rounded-full p-2 hover:bg-surface" aria-label={t('notifications')}>
@@ -88,9 +115,6 @@ export function Shell({ children }: { children: ReactNode }) {
             </select>
           </div>
         </header>
-        <nav className="flex gap-1 overflow-x-auto border-b border-line bg-card px-2 md:hidden print:hidden">
-          {[...nav, ...settings].filter((n) => n.show).map((n) => <Link key={n.href} href={n.href} className={cx('whitespace-nowrap px-3 py-2 text-sm', path.startsWith(n.href) ? 'text-brand font-semibold' : 'text-muted')}>{n.label}</Link>)}
-        </nav>
         <DemoBanner />
         <PlanBanner />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8">{children}</main>
