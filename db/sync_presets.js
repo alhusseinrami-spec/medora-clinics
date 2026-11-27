@@ -2,9 +2,10 @@
 // Runs as the schema owner. Idempotent: a changed preset becomes a new published version; old versions stay.
 const { Client } = require('pg');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const url = process.env.DATABASE_URL || 'postgres://medora:medora_dev@localhost:5432/medora';
 async function syncPresets({ log = console.log } = {}) {
-  const { PRESETS: P1, EXAM_PRESETS } = await import(path.join(__dirname, '../packages/shared/dist/index.js'));
+  const { PRESETS: P1, EXAM_PRESETS } = await import(pathToFileURL(path.join(__dirname, '../packages/shared/dist/index.js')).href);
   const c = new Client(url); await c.connect();
   try {
     for (const p of [...P1, ...EXAM_PRESETS]) {

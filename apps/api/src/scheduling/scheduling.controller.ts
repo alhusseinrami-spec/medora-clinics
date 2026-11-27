@@ -307,15 +307,28 @@ export class SchedulingController {
   }
 
   // ---------- Waiting room ----------
+  /**
+   * The queue: patients who arrived and wait to be called in. With include=today the page also gets who is in with
+   * the doctor right now and today's cancellations and no-shows (workspace time zone), so the front desk sees the whole day.
+   */
   @RequirePerm('appointment.manage') @Get('waiting-room')
-  waitingRoom(@Ctx() c: TenantInfo, @Query('doctor') doctor?: string, @Query('department') department?: string) {
-    const q = parse({ doctor: v.uuid().optional(), department: v.uuid().optional() }, { doctor, department });
-    return this.db.tx(c, (t) => t.q(`SELECT w.appointment_id, w.doctor_membership_id, du.full_name AS doctor_name, w.department_id, d.name AS department_name,
-        w.patient_name, w.appointment_time, w.arrived_at, extract(epoch FROM w.waiting_duration)::int AS waiting_seconds, a.status, a.is_walk_in, a.patient_id
+  waitingRoom(@Ctx() c: TenantInfo, @Query('doctor') doctor?: string, @Query('department') department?: string, @Query('include') include?: string) {
+    const q = parse({ doctor: v.uuid().optional(), department: v.uuid().optional(), include: v.enum('today').optional() }, { doctor, department, include });
+    const queue = `SELECT w.appointment_id, w.doctor_membership_id, du.full_name AS doctor_name, w.department_id, d.name AS department_name,
+        w.patient_name, w.appointment_time, w.arrived_at, extract(epoch FROM w.waiting_duration)::int AS waiting_seconds, a.status, a.is_walk_in, a.patient_id,
+        a.called_at, a.cancelled_reason
       FROM waiting_room w JOIN appointments a ON a.id=w.appointment_id
       JOIN memberships dm ON dm.id=w.doctor_membership_id JOIN users du ON du.id=dm.user_id LEFT JOIN departments d ON d.id=w.department_id
-      WHERE w.organization_id=$1 AND ($2::uuid IS NULL OR w.doctor_membership_id=$2) AND ($3::uuid IS NULL OR w.department_id=$3)
-      ORDER BY w.arrived_at`, [c.orgId, q.doctor ?? null, q.department ?? null]));
+      WHERE w.organization_id=$1 AND ($2::uuid IS NULL OR w.doctor_membership_id=$2) AND ($3::uuid IS NULL OR w.department_id=$3)`;
+    const rest = `SELECT a.id, a.doctor_membership_id, du.full_name, a.department_id, d.name, p.full_name, a.starts_at, a.arrived_at,
+        extract(epoch FROM now() - a.arrived_at)::int, a.status, a.is_walk_in, a.patient_id, a.called_at, a.cancelled_reason
+      FROM appointments a JOIN patients p ON p.id=a.patient_id JOIN organizations o ON o.id=a.organization_id
+      JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id LEFT JOIN departments d ON d.id=a.department_id
+      WHERE a.organization_id=$1 AND ($2::uuid IS NULL OR a.doctor_membership_id=$2) AND ($3::uuid IS NULL OR a.department_id=$3)
+        AND (a.status='in_consultation' OR (a.status IN ('cancelled','no_show')
+          AND (a.starts_at AT TIME ZONE o.timezone)::date = (now() AT TIME ZONE o.timezone)::date))`;
+    const sql = q.include === 'today' ? `${queue} UNION ALL ${rest} ORDER BY 8 NULLS LAST, 7` : `${queue} ORDER BY w.arrived_at`;
+    return this.db.tx(c, (t) => t.q(sql, [c.orgId, q.doctor ?? null, q.department ?? null]));
   }
 
 }
