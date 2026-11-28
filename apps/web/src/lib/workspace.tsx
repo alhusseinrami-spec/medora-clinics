@@ -15,10 +15,11 @@ export interface OrgInfo {
 }
 export interface LiveEvent { type: string; event?: string; appointment_id?: string; doctor_membership_id?: string; kind?: string; conversation_id?: string }
 /** Something the doctor did that the front desk should act on (from GET /live). */
-export interface LiveAlert { key: string; type: 'called' | 'fee' | 'completed' | 'prescription'; appointment_id: string | null; prescription_id: string | null;
+export interface LiveAlert { key: string; type: 'called' | 'fee' | 'completed' | 'prescription' | 'arrived' | 'request' | 'booked' | 'cancelled' | 'payment';
+  appointment_id: string | null; prescription_id: string | null; ref_id: string | null; starts_at: string | null;
   doctor_membership_id: string; doctor_name: string; patient_name: string; room_name: string | null; at: string; fee_amount: number | null; fee_currency: string | null }
 
-interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; feature: (f: string) => boolean; reload: () => Promise<void>; live: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void;
+interface WS { me: Me; org: OrgInfo; orgId: string; can: (p: string) => boolean; feature: (f: string) => boolean; reload: () => Promise<void>; live: boolean; synced: boolean; subscribe: (fn: (e: LiveEvent) => void) => () => void;
   alerts: LiveAlert[]; dismissAlert: (key: string) => void }
 const Ctx = createContext<WS>(null as any);
 
@@ -61,11 +62,14 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
   // demo on Vercel cannot keep one open), every 20 seconds as a safety net when it is, and right after any socket event.
   // A changed `sig` refreshes the open screens; new events become alerts for the front desk.
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
+  // True while the GET /live poll answers: screens are in sync even where the WebSocket cannot connect.
+  const [synced, setSynced] = useState(false);
   const pollNow = useRef<() => void>(() => {});
   const liveRef = useRef(false); liveRef.current = live;
   const me = state?.org.me;
   const wantsAlerts = !!me && (me.permissions.includes('appointment.manage') || me.permissions.includes('payment.register'));
   const myDoctor = me?.doctorMembershipId ?? null;
+  const schedules = !!me?.permissions.includes('appointment.manage');
   useEffect(() => {
     if (!state) return;
     let stop = false; let timer: any; let cursor: string | null = null; let sig: string | null = null; const seen = new Set<string>();
@@ -74,13 +78,20 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
       try {
         const r = await get<{ cursor: string; sig: string; events: LiveAlert[] }>(`/live${cursor ? `?since=${encodeURIComponent(cursor)}` : ''}`);
         if (stop) return;
-        cursor = r.cursor;
+        cursor = r.cursor; setSynced(true);
         if (sig !== null && r.sig !== sig) listeners.current.forEach((fn) => fn({ type: 'waiting_room', event: 'sync' }));
         sig = r.sig;
         const fresh = r.events.filter((e) => !seen.has(e.key));
         fresh.forEach((e) => seen.add(e.key));
-        // The doctor does not get alerts about their own visits; the front desk does.
-        const mine = fresh.filter((e) => wantsAlerts && e.doctor_membership_id !== myDoctor);
+        // Who is alerted: the doctor when their patient arrives; the front desk when a patient asks for a visit from the
+        // app, and when the doctor calls a patient in, sets a fee, finishes a visit or issues a prescription.
+        // Bookings, cancellations and payments only show in the activity feed.
+        const mine = fresh.filter((e) => {
+          if (e.type === 'arrived') return !!myDoctor && e.doctor_membership_id === myDoctor;
+          if (e.type === 'request') return !myDoctor && schedules;
+          if (['called', 'fee', 'completed', 'prescription'].includes(e.type)) return wantsAlerts && e.doctor_membership_id !== myDoctor;
+          return false;
+        });
         if (mine.length) setAlerts((xs) => {
           let next = xs.filter((x) => !mine.some((m) => m.key === x.key));
           for (const e of mine) {
@@ -92,7 +103,7 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
           }
           return next.slice(-4);
         });
-      } catch { /* offline or signed out: try again on the next tick */ }
+      } catch { if (!stop) setSynced(false); /* offline or signed out: try again on the next tick */ }
       if (!stop) timer = setTimeout(poll, document.visibilityState !== 'visible' ? 30000 : liveRef.current ? 20000 : 3000);
     };
     pollNow.current = () => { poll(); };
@@ -101,13 +112,13 @@ export function WorkspaceProvider({ orgId, children }: { orgId: string; children
     poll();
     return () => { stop = true; clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); pollNow.current = () => {}; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, !!state, wantsAlerts, myDoctor]);
+  }, [orgId, !!state, wantsAlerts, myDoctor, schedules]);
   useEffect(() => subscribe((e) => { if (e.event !== 'sync') pollNow.current(); }), [subscribe]);
   const dismissAlert = useCallback((key: string) => setAlerts((xs) => xs.filter((x) => x.key !== key)), []);
 
   if (error) return <div className="p-10 text-danger">{error}</div>;
   if (!state) return <div className="p-10 text-muted">…</div>;
-  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), feature: (f) => state.org.plan?.features?.[f] === true, reload, live, subscribe, alerts, dismissAlert }}>
+  return <Ctx.Provider value={{ ...state, orgId, can: (p) => state.org.me.permissions.includes(p), feature: (f) => state.org.plan?.features?.[f] === true, reload, live, synced, subscribe, alerts, dismissAlert }}>
     {children}<LiveAlerts />
   </Ctx.Provider>;
 }

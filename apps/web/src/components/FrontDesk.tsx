@@ -5,7 +5,8 @@ import { Badge, Button, Card, Empty, ErrorNote, Field, Input, Select, fmtMoney, 
 import { startInvoice } from './Invoice';
 import { get, put } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { useLiveReload, useWorkspace } from '@/lib/workspace';
+import { useLiveReload, useWorkspace, type LiveAlert } from '@/lib/workspace';
+import { ICON } from './LiveAlerts';
 
 interface CheckoutRow {
   appointment_id: string; patient_id: string; patient_name: string; patient_number: string; doctor_name: string; doctor_membership_id: string;
@@ -87,5 +88,32 @@ export function VisitFeeCard({ appointmentId }: { appointmentId: string }) {
       {a.fee_amount != null && <Button size="sm" variant="ghost" busy={busy} onClick={() => save(true)}>{t('clearFee')}</Button>}
       <Button busy={busy} disabled={amount === ''} onClick={() => save(false)}>{t('sendToDesk')}</Button>
     </div>
+  </Card>;
+}
+
+/**
+ * The owner's view of the whole clinic: today's operations as they happen (bookings, app requests, arrivals, call-ins,
+ * fees, finished visits, cancellations, payments), newest first. Refreshes by itself with the live sync.
+ */
+export function ActivityFeed() {
+  const { t, lang } = useI18n();
+  const [rows, setRows] = useState<LiveAlert[] | null>(null);
+  const load = useCallback(() => get<LiveAlert[]>('/live/activity').then(setRows).catch(() => setRows([])), []);
+  useLiveReload(load);
+  if (rows === null) return null;
+  const detail = (e: LiveAlert) => {
+    if ((e.type === 'fee' || e.type === 'payment' || (e.type === 'completed' && e.fee_amount != null)) && e.fee_amount != null) return fmtMoney(e.fee_amount, e.fee_currency ?? 'USD', lang);
+    if ((e.type === 'booked' || e.type === 'arrived') && e.starts_at) return fmtTime(e.starts_at, lang);
+    return null;
+  };
+  return <Card title={<span className="inline-flex items-center gap-2"><span className="size-2 animate-pulse rounded-full bg-success" />{t('activity')}</span>}>
+    <p className="-mt-1 mb-3 text-xs text-muted">{t('activityHint')}</p>
+    {rows.length === 0 ? <Empty>{t('activityEmpty')}</Empty> : <ul className="max-h-[28rem] divide-y divide-line overflow-y-auto">{rows.map((e) => <li key={e.key} className="flex items-start gap-3 py-2.5">
+      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm text-brand">{ICON[e.type]}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm"><span className="font-medium">{t(`act_${e.type}`)}</span> · {e.patient_name}</p>
+        <p className="text-xs text-muted tabular">{fmtTime(e.at, lang)}{e.doctor_name ? ` · ${e.doctor_name}` : ''}{detail(e) ? ` · ${detail(e)}` : ''}</p>
+      </div>
+    </li>)}</ul>}
   </Card>;
 }

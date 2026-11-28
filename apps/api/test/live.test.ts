@@ -129,4 +129,45 @@ test('doctor and front desk stay in step: call-in, visit fee, prescription and c
   assert.equal(late.status, 409); assert.equal(late.body.code, 'already_invoiced');
   out = await asst.get('/front-desk/checkout');
   assert.equal(out.body[0].invoice.id, inv.body.id); assert.equal(out.body[0].invoice.due, 55);
+  ids.inv = inv.body.id;
+});
+
+test('whole clinic in step: patient app request reaches the front desk, arrival reaches the doctor, the owner sees everything', async () => {
+  const start = (await desk.get('/live')).body.cursor;
+  const drStart = (await drA.get('/live')).body.cursor;
+  // A patient asks for a visit from the patient app.
+  const inv = await desk.post(`/patients/${ids.patient}/portal/invitations`, { email: 'fairouz.patient@synthetic.medora' });
+  assert.equal(inv.status, 201, JSON.stringify(inv.body));
+  const pat = new Client();
+  const reg = await pat.post('/auth/register/patient', { fullName: 'Fairouz Synthetic', email: 'fairouz.patient@synthetic.medora', password: PW, invitation: inv.body.inviteUrl.split('/portal/invite/')[1] });
+  assert.equal(reg.status, 201, JSON.stringify(reg.body));
+  const req = await pat.post('/portal/requests', { patientId: ids.patient, doctorMembershipId: ids.drA, preferredDate: new Date(Date.now() + 3 * 86400e3).toISOString().slice(0, 10), preferredTime: 'morning', note: null });
+  assert.equal(req.status, 201, JSON.stringify(req.body));
+  const deskEv = (await desk.get(`/live?since=${encodeURIComponent(start)}`)).body.events;
+  const reqEv = deskEv.find((e: any) => e.type === 'request');
+  assert.ok(reqEv, JSON.stringify(deskEv)); assert.equal(reqEv.patient_name, 'Synthetic Patient Fairouz'); assert.equal(reqEv.ref_id, req.body.id);
+
+  // The front desk books a visit and marks the patient arrived: the doctor's poll shows the arrival.
+  const a = await desk.post('/appointments', { patientId: ids.patient, doctorMembershipId: ids.drA, startsAt: new Date(Date.now() + 60 * 60000).toISOString(), durationMinutes: 20 });
+  assert.equal(a.status, 201, JSON.stringify(a.body));
+  assert.equal((await desk.post(`/appointments/${a.body.id}/status`, { status: 'arrived' })).status, 200);
+  const drEv = (await drA.get(`/live?since=${encodeURIComponent(drStart)}`)).body.events;
+  assert.ok(drEv.some((e: any) => e.type === 'arrived' && e.appointment_id === a.body.id), JSON.stringify(drEv));
+  assert.ok(!(await drB.get(`/live?since=${encodeURIComponent(drStart)}`)).body.events.some((e: any) => e.appointment_id === a.body.id), 'not another doctor');
+  assert.equal((await desk.post(`/appointments/${a.body.id}/status`, { status: 'cancelled', reason: 'Synthetic change of plans' })).status, 200);
+
+  assert.equal((await asst.post(`/invoices/${ids.inv}/issue`)).status, 201);
+  const paid = await asst.post(`/invoices/${ids.inv}/payments`, { method: 'cash', amount: 55, currency: 'USD', reference: null, note: null });
+  assert.equal(paid.status, 201, JSON.stringify(paid.body));
+  assert.ok((await desk.get(`/live?since=${encodeURIComponent(start)}`)).body.events.some((e: any) => e.type === 'payment' && e.fee_amount === 55));
+
+  // The owner's live activity: today's operations across the clinic, including money, newest first.
+  const act = await owner.get('/live/activity');
+  assert.equal(act.status, 200, JSON.stringify(act.body));
+  const types = new Set(act.body.map((e: any) => e.type));
+  for (const k of ['booked', 'arrived', 'called', 'fee', 'completed', 'cancelled', 'payment']) assert.ok(types.has(k), `${k} missing: ${[...types]}`);
+  assert.ok(types.has('request'), 'the owner sees requests from the patient app');
+  assert.ok(!types.has('prescription'), 'the owner does not read prescriptions');
+  assert.ok(Date.parse(act.body[0].at) >= Date.parse(act.body[act.body.length - 1].at));
+  assert.ok([400, 403].includes((await pat.get('/live/activity')).status), 'patients have no workspace feed');
 });

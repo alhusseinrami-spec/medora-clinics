@@ -5,16 +5,17 @@ import { Badge, Button, Card, Dialog, Empty, ErrorNote, Field, Input, Select, Te
 import { del, get, post } from '@/lib/api';
 import { toLocalInput, useDoctors } from '@/lib/hooks';
 import { useI18n } from '@/lib/i18n';
-import { useWorkspace } from '@/lib/workspace';
+import { useLiveReload, useWorkspace } from '@/lib/workspace';
 
 const TIME_HOUR: Record<string, number> = { morning: 9, afternoon: 14, evening: 17, any: 10 };
 
 /** Dashboard card: visit requests patients sent from the patient app. Booking creates a real confirmed appointment. */
 export function AppointmentRequests() {
-  const { t, lang } = useI18n(); const { orgId, subscribe } = useWorkspace();
+  const { t, lang } = useI18n(); const { orgId } = useWorkspace();
   const [rows, setRows] = useState<any[] | null>(null); const [book, setBook] = useState<any>(null); const [decline, setDecline] = useState<any>(null);
   const load = useCallback(() => get<any[]>('/appointment-requests').then(setRows).catch(() => setRows([])), []);
-  useEffect(() => { load(); return subscribe((e: any) => { if (e.type === 'notification') load(); }); }, [load, subscribe]);
+  // Refreshes as soon as a patient asks from the app (live sync), not only on the user's own notifications.
+  useLiveReload(load);
   if (rows === null || rows.length === 0) return rows === null ? null : <Card title={t('apptRequests')}><Empty>{t('noRequests')}</Empty></Card>;
   return (
     <Card title={<span>{t('apptRequests')} <Badge className="ms-1">{rows.length}</Badge></span>}>
