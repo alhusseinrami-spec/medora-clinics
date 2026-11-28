@@ -1,6 +1,11 @@
 // Live sync strings: call-in alerts for the front desk, the visit fee, checkout.
 export const LIVE: Record<'en' | 'fr' | 'ar', Record<string, string>> = {
   en: {
+    liveArrived: '{patient} has arrived', liveArrivedBody: 'In the waiting room · booked for {time}', liveOpenQueue: 'Waiting room',
+    liveRequest: 'New appointment request', liveRequestBody: '{patient} · prefers {date}', liveReview: 'Review',
+    activity: 'Live activity', activityHint: 'Everything happening in the clinic today, as it happens.', activityEmpty: 'Nothing yet today.',
+    act_booked: 'Visit booked', act_arrived: 'Arrived', act_called: 'Called in', act_fee: 'Fee set', act_completed: 'Visit finished',
+    act_cancelled: 'Cancelled or missed', act_prescription: 'Prescription issued', act_request: 'Requested from the patient app', act_payment: 'Payment received',
     liveSendIn: 'Send the patient in', liveCalledBody: '{doctor} is ready for {patient}', liveRoom: 'Room',
     liveCollect: 'Collect {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: '{patient} has finished with {doctor}',
     liveRxReady: 'Prescription ready for {patient}', livePrint: 'Print', liveTakePayment: 'Take payment', liveGotIt: 'OK',
@@ -12,6 +17,11 @@ export const LIVE: Record<'en' | 'fr' | 'ar', Record<string, string>> = {
     sendToDesk: 'Send to front desk',
   },
   fr: {
+    liveArrived: '{patient} est arrivé(e)', liveArrivedBody: 'En salle d’attente · rendez-vous à {time}', liveOpenQueue: 'Salle d’attente',
+    liveRequest: 'Nouvelle demande de rendez-vous', liveRequestBody: '{patient} · souhaite le {date}', liveReview: 'Voir',
+    activity: 'Activité en direct', activityHint: 'Tout ce qui se passe au centre aujourd’hui, en temps réel.', activityEmpty: 'Rien pour l’instant aujourd’hui.',
+    act_booked: 'Rendez-vous pris', act_arrived: 'Arrivé(e)', act_called: 'Appelé(e)', act_fee: 'Prix fixé', act_completed: 'Visite terminée',
+    act_cancelled: 'Annulé ou absent', act_prescription: 'Ordonnance émise', act_request: 'Demande depuis l’application patient', act_payment: 'Paiement reçu',
     liveSendIn: 'Faites entrer le patient', liveCalledBody: '{doctor} attend {patient}', liveRoom: 'Salle',
     liveCollect: 'Encaisser {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: '{patient} a terminé avec {doctor}',
     liveRxReady: 'Ordonnance prête pour {patient}', livePrint: 'Imprimer', liveTakePayment: 'Encaisser', liveGotIt: 'OK',
@@ -23,6 +33,11 @@ export const LIVE: Record<'en' | 'fr' | 'ar', Record<string, string>> = {
     sendToDesk: 'Envoyer à l’accueil',
   },
   ar: {
+    liveArrived: 'وصل {patient}', liveArrivedBody: 'في غرفة الانتظار · الموعد {time}', liveOpenQueue: 'غرفة الانتظار',
+    liveRequest: 'طلب موعد جديد', liveRequestBody: '{patient} · يفضّل {date}', liveReview: 'عرض',
+    activity: 'النشاط المباشر', activityHint: 'كل ما يجري في المركز اليوم، لحظة بلحظة.', activityEmpty: 'لا شيء بعد اليوم.',
+    act_booked: 'حُجز موعد', act_arrived: 'وصل', act_called: 'دخل إلى الطبيب', act_fee: 'حُدّد السعر', act_completed: 'انتهت الزيارة',
+    act_cancelled: 'أُلغي أو لم يحضر', act_prescription: 'صدرت وصفة', act_request: 'طلب من تطبيق المريض', act_payment: 'دفعة مستلمة',
     liveSendIn: 'حان دور المريض', liveCalledBody: '{doctor} جاهز لاستقبال {patient}', liveRoom: 'الغرفة',
     liveCollect: 'المطلوب تحصيل {amount}', liveFeeBody: '{patient} · {doctor}', liveDone: 'أنهى {patient} المعاينة مع {doctor}',
     liveRxReady: 'الوصفة جاهزة لـ {patient}', livePrint: 'طباعة', liveTakePayment: 'استلام الدفعة', liveGotIt: 'حسنًا',

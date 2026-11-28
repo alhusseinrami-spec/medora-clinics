@@ -333,31 +333,58 @@ export class SchedulingController {
           || '|' || coalesce((SELECT count(*)::text || coalesce(max(r.issued_at)::text, '') FROM prescriptions r WHERE r.organization_id=$1 AND r.issued_at >= ${day}), '')
           || '|' || coalesce((SELECT count(*)::text || coalesce(sum(b.paid)::text, '') || coalesce(string_agg(i.status, '' ORDER BY i.id), '') FROM invoices i JOIN invoice_balances b ON b.invoice_id=i.id
               WHERE i.organization_id=$1 AND i.created_at >= ${day}), '')
+          || '|' || coalesce((SELECT count(*)::text || coalesce(string_agg(r.status, '' ORDER BY r.id), '') FROM appointment_requests r WHERE r.organization_id=$1 AND (r.status='pending' OR r.created_at >= ${day})), '')
           || '|' || (SELECT count(*)::text FROM notifications n WHERE n.user_id=$3 AND n.read_at IS NULL)) AS sig`, [c.orgId, base.day_start, c.userId]);
       let events: any[] = [];
-      if (q.since) {
-        // Never look back more than ten minutes, so an old tab coming back does not replay the whole day.
-        const from = new Date(Math.max(Date.parse(q.since), Date.now() - 10 * 60000)).toISOString();
-        const who = `JOIN patients p ON p.id=a.patient_id JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id LEFT JOIN rooms rm ON rm.id=a.room_id`;
-        events = await t.q(`
-          SELECT 'called' AS type, a.id AS appointment_id, NULL::uuid AS prescription_id, a.doctor_membership_id, du.full_name AS doctor_name, p.full_name AS patient_name,
-                 rm.name AS room_name, a.called_at AS at, NULL::numeric AS fee_amount, NULL::text AS fee_currency
-            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.called_at > $2 AND a.status='in_consultation'
-          UNION ALL
-          SELECT 'fee', a.id, NULL, a.doctor_membership_id, du.full_name, p.full_name, rm.name, a.fee_set_at, a.fee_amount, a.fee_currency
-            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.fee_set_at > $2 AND a.fee_amount IS NOT NULL AND a.status NOT IN ('cancelled','no_show')
-          UNION ALL
-          SELECT 'completed', a.id, NULL, a.doctor_membership_id, du.full_name, p.full_name, rm.name, a.completed_at, a.fee_amount, a.fee_currency
-            FROM appointments a ${who} WHERE a.organization_id=$1 AND a.completed_at > $2 AND a.status='completed'
-          UNION ALL
-          SELECT 'prescription', NULL, r.id, r.prescribed_by, du.full_name, p.full_name, NULL, r.issued_at, NULL, NULL
-            FROM prescriptions r JOIN patients p ON p.id=r.patient_id JOIN memberships dm ON dm.id=r.prescribed_by JOIN users du ON du.id=dm.user_id
-            WHERE r.organization_id=$1 AND r.issued_at > $2 AND r.status='issued'
-          ORDER BY at LIMIT 50`, [c.orgId, from]);
-        events = events.map((e) => ({ ...e, fee_amount: e.fee_amount === null ? null : Number(e.fee_amount), key: `${e.type}:${e.appointment_id ?? e.prescription_id}:${new Date(e.at).getTime()}` }));
-      }
+      // Never look back more than ten minutes, so an old tab coming back does not replay the whole day.
+      if (q.since) events = await this.events(t, c.orgId, new Date(Math.max(Date.parse(q.since), Date.now() - 10 * 60000)).toISOString(), 50, 'ASC');
       return { cursor: base.cursor, sig: sig.sig, events };
     });
+  }
+
+  /**
+   * What happened in the workspace, newest first: today's operations (workspace time zone) for the live activity feed
+   * on the owner's dashboard. Each kind only appears for callers whose row-level security lets them read it.
+   */
+  @RequireAnyPerm('report.view', 'appointment.manage') @Get('live/activity')
+  activity(@Ctx() c: TenantInfo) {
+    return this.db.tx(c, async (t) => {
+      const day = await t.one(`SELECT date_trunc('day', now() AT TIME ZONE timezone) AT TIME ZONE timezone AS day_start FROM organizations WHERE id=$1`, [c.orgId]);
+      return this.events(t, c.orgId, new Date(day.day_start).toISOString(), 100, 'DESC');
+    });
+  }
+
+  /**
+   * Operations after `from`: visit booked, appointment requested from the patient app, patient arrived, called in,
+   * fee set, visit finished, cancelled or missed, prescription issued, payment received. Row-level security decides
+   * which rows each caller sees (no prescriptions without prescription.view, no payments without finance access...).
+   */
+  private async events(t: Tx, orgId: string, from: string, limit: number, order: 'ASC' | 'DESC') {
+    const who = `JOIN patients p ON p.id=a.patient_id JOIN memberships dm ON dm.id=a.doctor_membership_id JOIN users du ON du.id=dm.user_id LEFT JOIN rooms rm ON rm.id=a.room_id`;
+    const cols = (type: string, at: string, fee = 'NULL::numeric, NULL::text', ref = 'NULL::uuid') =>
+      `'${type}'::text AS type, a.id AS appointment_id, ${ref} AS ref_id, a.doctor_membership_id, du.full_name AS doctor_name, p.full_name AS patient_name,
+       rm.name AS room_name, ${at} AS at, ${fee.split(',')[0]} AS fee_amount, ${fee.split(',')[1]} AS fee_currency, a.starts_at`;
+    const rows = await t.q(`
+      SELECT ${cols('booked', 'a.created_at')} FROM appointments a ${who} WHERE a.organization_id=$1 AND a.created_at > $2
+      UNION ALL SELECT ${cols('arrived', 'a.arrived_at')} FROM appointments a ${who} WHERE a.organization_id=$1 AND a.arrived_at > $2
+      UNION ALL SELECT ${cols('called', 'a.called_at')} FROM appointments a ${who} WHERE a.organization_id=$1 AND a.called_at > $2
+      UNION ALL SELECT ${cols('fee', 'a.fee_set_at', 'a.fee_amount, a.fee_currency')} FROM appointments a ${who}
+        WHERE a.organization_id=$1 AND a.fee_set_at > $2 AND a.fee_amount IS NOT NULL AND a.status NOT IN ('cancelled','no_show')
+      UNION ALL SELECT ${cols('completed', 'a.completed_at', 'a.fee_amount, a.fee_currency')} FROM appointments a ${who} WHERE a.organization_id=$1 AND a.completed_at > $2 AND a.status='completed'
+      UNION ALL SELECT ${cols('cancelled', 'coalesce(a.cancelled_at, a.starts_at)')} FROM appointments a ${who}
+        WHERE a.organization_id=$1 AND a.status IN ('cancelled','no_show') AND coalesce(a.cancelled_at, a.starts_at) > $2 AND coalesce(a.cancelled_at, a.starts_at) <= now()
+      UNION ALL SELECT 'prescription', NULL, r.id, r.prescribed_by, du.full_name, p.full_name, NULL, r.issued_at, NULL, NULL, NULL
+        FROM prescriptions r JOIN patients p ON p.id=r.patient_id JOIN memberships dm ON dm.id=r.prescribed_by JOIN users du ON du.id=dm.user_id
+        WHERE r.organization_id=$1 AND r.issued_at > $2 AND r.status='issued'
+      UNION ALL SELECT 'request', NULL, q.id, q.doctor_membership_id, du.full_name, p.full_name, NULL, q.created_at, NULL, NULL, q.preferred_date::timestamptz
+        FROM appointment_requests q JOIN patients p ON p.id=q.patient_id LEFT JOIN memberships dm ON dm.id=q.doctor_membership_id LEFT JOIN users du ON du.id=dm.user_id
+        WHERE q.organization_id=$1 AND q.created_at > $2 AND q.status='pending'
+      UNION ALL SELECT 'payment', i.appointment_id, y.id, i.doctor_membership_id, du.full_name, p.full_name, NULL, y.received_at, y.amount, y.currency, NULL
+        FROM payments y JOIN invoices i ON i.id=y.invoice_id JOIN patients p ON p.id=i.patient_id LEFT JOIN memberships dm ON dm.id=i.doctor_membership_id LEFT JOIN users du ON du.id=dm.user_id
+        WHERE y.organization_id=$1 AND y.received_at > $2
+      ORDER BY at ${order === 'DESC' ? 'DESC' : 'ASC'} LIMIT ${Math.min(Math.max(1, limit), 200)}`, [orgId, from]);
+    return rows.map((e) => ({ ...e, prescription_id: e.type === 'prescription' ? e.ref_id : null, fee_amount: e.fee_amount === null ? null : Number(e.fee_amount),
+      key: `${e.type}:${e.appointment_id ?? e.ref_id}:${new Date(e.at).getTime()}` }));
   }
 
   /**
